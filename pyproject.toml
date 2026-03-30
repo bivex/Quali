@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "quali2"
+version = "0.1.0"
+description = "Python code quality assessment tool — architecture smells, design smells, implementation smells, ML smells, and OO metrics"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = [
+    "antlr4-python3-runtime>=4.13,<5",
+]
+
+[project.scripts]
+quali2 = "quali2.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/quali2"]
