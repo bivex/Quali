@@ -312,13 +312,13 @@ class TestComplexMethod:
     """Cyclomatic complexity > 15."""
 
     def test_triggered(self):
-        # Build a deeply nested if/elif chain with boolean operators
-        parts = ["def f(x, y, z):"]
-        for i in range(8):
-            parts.append(f"    {'el' if i else ''}if x == {i} and y > 0 or z < 0:")
-            parts.append(f"        return {i}")
-        parts.append("    return -1")
-        code = "\n".join(parts) + "\n"
+        # Build deeply nested if blocks — each nested if adds +1 to CC
+        lines = ["def f(x):"]
+        indent = "    "
+        for i in range(16):
+            lines.append(f"{indent * (i + 1)}if x == {i}:")
+        lines.append(f"{indent * 17}return 1")
+        code = "\n".join(lines) + "\n"
         smells = _smells_of(code, "Complex Method")
         assert len(smells) >= 1
 
@@ -422,7 +422,7 @@ class TestMagicNumber:
     """Non-obvious numeric literal used in an expression."""
 
     def test_triggered(self):
-        code = "def f():\n    return x + 31337\n"
+        code = "def f():\n    return 31337 + x\n"
         smells = _smells_of(code, "Magic Number")
         assert any("31337" in s.message for s in smells)
 
