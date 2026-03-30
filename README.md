@@ -32,7 +32,6 @@ Python code quality assessment tool powered by ANTLR4. Detects architecture smel
 ## Installation
 
 ```bash
-# Clone and set up
 git clone <repo-url> && cd quali2
 python3 -m venv .venv
 source .venv/bin/activate
@@ -50,7 +49,7 @@ quali2 path/to/file.py
 # Analyze a directory (recursively)
 quali2 src/
 
-# JSON output (pipe to jq, save, etc.)
+# JSON output
 quali2 src/ --format json
 
 # Version
@@ -77,7 +76,7 @@ PYTHONPATH=src python -m quali2 path/to/code.py
     [! ] L  42  [Implementation] Long Parameter List
           __init__: Method has 9 parameters (threshold 7)
     [!!] L  88  [ML] Chain Indexing
-          <line>: Chained indexing on DataFrame: df["a"]["b"] — use .loc[] instead
+          <line>: Chained indexing on DataFrame: df["a"]["b"] -- use .loc[] instead
 
   Metrics:
     <file>                                    LOC    = 120
@@ -93,7 +92,7 @@ PYTHONPATH=src python -m quali2 path/to/code.py
 ========================================================================
   Files analyzed : 1
   Total smells   : 3
-  Total metrics  = 42
+  Total metrics  : 42
     High    : 2
     Medium  : 1
 ```
@@ -103,28 +102,28 @@ PYTHONPATH=src python -m quali2 path/to/code.py
 ```
 src/quali2/
 ├── domain/
-│   └── models.py          # Value objects (Smell, Metric, enums, reports)
+│   └── models.py              Value objects (Smell, Metric, enums, reports)
 ├── analysis/
-│   ├── engine.py          # Orchestration: parse → metrics → detect → report
-│   ├── visitor.py         # ANTLR4 parse-tree visitor (structural extraction)
-│   └── metrics.py         # OO metrics computation
+│   ├── engine.py              Orchestration: parse -> metrics -> detect -> report
+│   ├── visitor.py             ANTLR4 parse-tree visitor (structural extraction)
+│   └── metrics.py             OO metrics computation
 ├── detectors/
-│   ├── architecture.py    # Architecture smell detectors
-│   ├── design.py          # Design smell detectors
-│   ├── implementation.py  # Implementation smell detectors
-│   └── ml.py              # ML-specific smell detectors
-├── reporting.py           # Text and JSON output formatters
-├── cli.py                 # CLI entry point
-└── antlr/                 # ANTLR4-generated Python3 lexer/parser
+│   ├── architecture.py        Architecture smells (incl. cross-file analysis)
+│   ├── design.py              Design smells
+│   ├── implementation.py      Implementation smells (incl. magic number via ANTLR4 tokens)
+│   └── ml.py                  ML-specific smells
+├── reporting.py               Text and JSON output formatters
+├── cli.py                     CLI entry point
+└── antlr/                     ANTLR4-generated Python3 lexer/parser
 ```
 
-The pipeline:
+Pipeline:
 
-1. **Parse** — ANTLR4 lexer/parser converts Python source into a parse tree
-2. **Visit** — `PythonAnalysisVisitor` walks the tree, extracting classes, methods, imports, fields, inheritance hierarchies
-3. **Metrics** — `compute_metrics()` calculates OO metrics from the extracted data
-4. **Detect** — Four detector modules run against the analysis data and source text
-5. **Report** — `format_text()` or `format_json()` renders results
+1. **Parse** -- ANTLR4 lexer/parser converts Python source into a parse tree
+2. **Visit** -- `PythonAnalysisVisitor` walks the tree, extracting classes, methods, imports, fields, inheritance
+3. **Metrics** -- `compute_metrics()` calculates OO metrics from the extracted data
+4. **Detect** -- Four detector modules run per-file; cross-file detectors run on the full project
+5. **Report** -- `format_text()` or `format_json()` renders results
 
 ## Detection Thresholds
 
@@ -136,12 +135,16 @@ Each detector uses configurable thresholds defined as module-level constants:
 | God Component (classes) | > 10 classes | `GOD_COMPONENT_CLASSES` |
 | Feature Concentration | > 10 import modules | `FEATURE_CONCENTRATION_IMPORT_MODULES` |
 | Dense Structure | avg > 10 attr accesses/method | `DENSE_STRUCTURE_DEP_RATIO` |
+| Unstable Dependency | instability I > 0.4 | `UNSTABLE_DEPENDENCY_THRESHOLD` |
+| Broken Modularization | 6+ shared local imports | `BROKEN_MODULARIZATION_SHARED_IMPORTS` |
 | Multifaceted Abstraction | > 15 methods | `MULTIFACETED_METHODS` |
 | Deficient Encapsulation | > 5 public fields | (inline) |
 | Insufficient Modularization | > 500 lines | `INSUFFICIENT_LOC` |
 | Hub-like Modularization | > 15 base classes | `HUB_LIKE_FAN` |
 | Wide Hierarchy | >= 10 subclasses | `WIDE_HIERARCHY_CHILDREN` |
 | Deep Hierarchy | >= 5 depth | `DEEP_HIERARCHY_DEPTH` |
+| Rebellious Hierarchy | > 5 overrides, < 2 fields | (inline) |
+| Broken Hierarchy | `__init__` without `super()` | (inline, source-based) |
 | Long Method | > 40 lines | `LONG_METHOD_LINES` |
 | Long Parameter List | > 7 params | `LONG_PARAM_LIST` |
 | Complex Method | CC > 15 | `COMPLEX_METHOD_CC` |
@@ -150,6 +153,8 @@ Each detector uses configurable thresholds defined as module-level constants:
 | Long Statement | > 120 chars | `LONG_STATEMENT_CHARS` |
 | Long Lambda | > 5 lines | `LONG_LAMBDA_LINES` |
 | Long Message Chain | >= 4 dots | `LONG_MESSAGE_CHAIN_DOTS` |
+| Magic Number | non-whitelisted numeric literal | `WHITELISTED_NUMBERS` |
+| Missing Default | `match` without `case _` | (regex) |
 | Ambiguous Merge Key | `.merge()` without `on=` | (inline) |
 | Broken NaN Check | `x == np.nan` | (regex) |
 | Chain Indexing | `df["a"]["b"]` | (regex) |
@@ -164,50 +169,52 @@ source .venv/bin/activate
 PYTHONPATH=src pytest tests/ -v
 ```
 
-131 tests. Coverage matrix — detector → test class:
+**131 tests**, all passing. Coverage matrix:
 
-### Architecture (3 test classes, 6 tests)
+### Architecture -- 8 tests
 
-| Detector | Test Class | +Case | −Case |
+| Detector | Test Class | +Case | -Case |
 |---|---|---|---|
 | God Component (LOC) | `TestGodComponent` | ✓ | ✓ |
-| God Component (classes) | `TestGodComponent` | ✓ | |
+| God Component (classes) | `TestGodComponent` / `TestGodComponentNegative` | ✓ | ✓ |
 | Feature Concentration | `TestFeatureConcentration` | ✓ | ✓ |
 | Dense Structure | `TestDenseStructure` | ✓ | ✓ |
+| Unstable Dependency (cross-file) | `TestUnstableDependency` | ✓ | ✓, ✓ |
+| Broken Modularization (cross-file) | `TestBrokenModularization` | ✓ | ✓ |
 
-### Design (10 test classes, 16 tests)
+### Design -- 16 tests
 
-| Detector | Test Class | +Case | −Case |
+| Detector | Test Class | +Case | -Case |
 |---|---|---|---|
 | Multifaceted Abstraction | `TestMultifacetedAbstraction` | ✓ | ✓ |
-| Feature Envy | `TestFeatureEnvy` + `TestFeatureEnvyNegative` | ✓ | ✓ |
+| Feature Envy | `TestFeatureEnvy` / `TestFeatureEnvyNegative` | ✓ | ✓ |
 | Deficient Encapsulation | `TestDeficientEncapsulation` | ✓ | ✓ |
 | Insufficient Modularization | `TestInsufficientModularization` | ✓ | ✓ |
-| Hub-like Modularization | `TestHubLikeModularization` + `TestHubLikeNegative` | ✓ | ✓ |
+| Hub-like Modularization | `TestHubLikeModularization` / `TestHubLikeNegative` | ✓ | ✓ |
 | Deep Hierarchy | `TestDeepHierarchy` | ✓ | ✓ |
 | Wide Hierarchy | `TestWideHierarchy` | ✓ | ✓ |
-| Rebellious Hierarchy | `TestRebelliousHierarchy` + `TestRebelliousHierarchyNegative` | ✓ | ✓ |
+| Rebellious Hierarchy | `TestRebelliousHierarchy` / `TestRebelliousHierarchyNegative` | ✓ | ✓ |
 | Broken Hierarchy | `TestBrokenHierarchy` | ✓ | ✓ |
 
-### Implementation (11 test classes, 34 tests)
+### Implementation -- 42 tests
 
-| Detector | Test Class | +Case | −Case |
+| Detector | Test Class | +Case | -Case |
 |---|---|---|---|
 | Complex Conditional | `TestComplexConditional` | ✓ | ✓ |
-| Complex Method | `TestComplexMethod` | ✓ | |
+| Complex Method | `TestComplexMethod` / `TestComplexMethodNegative` | ✓ | ✓ |
 | Empty Catch Clause | `TestEmptyCatchClause` | ✓, ✓ | ✓ |
 | Long Identifier | `TestLongIdentifier` | ✓ | ✓ |
 | Long Method | `TestLongMethod` | ✓ | ✓ |
 | Long Parameter List | `TestLongParameterList` | ✓ | ✓ |
 | Long Statement | `TestLongStatement` | ✓ | ✓ |
-| Magic Number | `TestMagicNumber` | 10 +Cases | 8 −Cases |
+| Magic Number | `TestMagicNumber` / `TestMagicNumberEdgeCases` | 12 | 8 |
 | Missing Default | `TestMissingDefault` | ✓ | ✓ |
 | Long Lambda Function | `TestLongLambdaFunction` | ✓ | ✓ |
 | Long Message Chain | `TestLongMessageChain` | ✓ | ✓ |
 
-### ML (6 test classes, 11 tests)
+### ML -- 11 tests
 
-| Detector | Test Class | +Case | −Case |
+| Detector | Test Class | +Case | -Case |
 |---|---|---|---|
 | Ambiguous Merge Key | `TestAmbiguousMergeKey` | ✓ | ✓ |
 | Broken NaN Check | `TestBrokenNaNCheck` | ✓, ✓ | ✓ |
@@ -216,52 +223,20 @@ PYTHONPATH=src pytest tests/ -v
 | Type Blind Conversion | `TestTypeBlindConversion` | ✓ | ✓ |
 | Unnecessary Iteration | `TestUnnecessaryIteration` | ✓, ✓ | ✓ |
 
-### Cross-cutting (3 test classes, 12 tests)
+### Metrics, CLI, Infrastructure -- 49 tests
 
 | Area | Test Class | Tests |
 |---|---|---|
-| Clean code → no false positives | `TestCleanCode` | 3 |
-| Smell metadata (category/severity) | `TestSmellMetadata` | 4 + 4 parametrized |
+| OO metrics edge cases (LCOM, DIT, FANOUT, CC, NOM, NOPF) | `TestMetricsEdgeCases` | 6 |
+| Clean code -> no false positives | `TestCleanCode` | 3 |
+| Smell metadata (category/severity) | `TestSmellMetadata` | 8 |
 | Report aggregation | `TestReportAggregation` | 3 |
-
-### Negative tests (5 test classes, 5 tests)
-
-| Detector | Test Class | What's verified |
-|---|---|---|
-| God Component | `TestGodComponentNegative` | few classes → no smell |
-| Feature Envy | `TestFeatureEnvyNegative` | own-attrs method → no smell |
-| Hub-like Modularization | `TestHubLikeNegative` | 2 bases → no smell |
-| Rebellious Hierarchy | `TestRebelliousHierarchyNegative` | 1 override → no smell |
-| Complex Method | `TestComplexMethodNegative` | simple func → no smell |
-
-### Metrics edge cases (1 test class, 6 tests)
-
-| Scenario | Test |
-|---|---|
-| LCOM = 0 for cohesive class | `test_lcom_zero_for_cohesive_class` |
-| DIT for 6-level inheritance | `test_dit_for_deep_chain` |
-| FANOUT counts imports | `test_fanout_counts_imports` |
-| CC for nested loops | `test_cc_for_nested_loops` |
-| NOM counts methods | `test_loc_for_class_counts_methods` |
-| NOPF counts public fields | `test_nopf_counts_only_public` |
-
-### Infrastructure / CLI (6 test classes, 17 tests)
-
-| Area | Test Class | Tests |
-|---|---|---|
 | CLI errors, json, version | `TestCLIErrors` | 3 |
-| JSON content fields | `TestReportingContent` | 2 |
-| Visitor: from-import, nested class, empty class, defaults, async | `TestVisitorEdgeCases` | 5 |
-| Magic number formats: bin, oct, underscore, hex whitelist | `TestMagicNumberEdgeCases` | 4 |
+| JSON content verification | `TestReportingContent` | 2 |
+| Visitor: from-import, nested class, defaults, async | `TestVisitorEdgeCases` | 5 |
 | File discovery: .pyc, nested dirs, __pycache__ | `TestFileDiscovery` | 3 |
 | Parse error resilience | `TestParseErrorResilience` | 1 |
-
-### Cross-file (2 test classes, 5 tests)
-
-| Detector | Test Class | +Case | −Case |
-|---|---|---|---|
-| Unstable Dependency | `TestUnstableDependency` | ✓ | ✓, ✓ |
-| Broken Modularization | `TestBrokenModularization` | ✓ | ✓ |
+| Original smoke tests | `test_quali2.py` | 9 |
 
 ## Dependencies
 
