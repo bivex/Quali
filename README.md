@@ -164,7 +164,7 @@ source .venv/bin/activate
 PYTHONPATH=src pytest tests/ -v
 ```
 
-97 tests. Coverage matrix — detector → test class:
+126 tests. Coverage matrix — detector → test class:
 
 ### Architecture (3 test classes, 6 tests)
 
@@ -224,6 +224,38 @@ PYTHONPATH=src pytest tests/ -v
 | Clean code → no false positives | `TestCleanCode` | 3 |
 | Smell metadata (category/severity) | `TestSmellMetadata` | 4 + 4 parametrized |
 | Report aggregation | `TestReportAggregation` | 3 |
+
+### Negative tests (5 test classes, 5 tests)
+
+| Detector | Test Class | What's verified |
+|---|---|---|
+| God Component | `TestGodComponentNegative` | few classes → no smell |
+| Feature Envy | `TestFeatureEnvyNegative` | own-attrs method → no smell |
+| Hub-like Modularization | `TestHubLikeNegative` | 2 bases → no smell |
+| Rebellious Hierarchy | `TestRebelliousHierarchyNegative` | 1 override → no smell |
+| Complex Method | `TestComplexMethodNegative` | simple func → no smell |
+
+### Metrics edge cases (1 test class, 6 tests)
+
+| Scenario | Test |
+|---|---|
+| LCOM = 0 for cohesive class | `test_lcom_zero_for_cohesive_class` |
+| DIT for 6-level inheritance | `test_dit_for_deep_chain` |
+| FANOUT counts imports | `test_fanout_counts_imports` |
+| CC for nested loops | `test_cc_for_nested_loops` |
+| NOM counts methods | `test_loc_for_class_counts_methods` |
+| NOPF counts public fields | `test_nopf_counts_only_public` |
+
+### Infrastructure / CLI (6 test classes, 17 tests)
+
+| Area | Test Class | Tests |
+|---|---|---|
+| CLI errors, json, version | `TestCLIErrors` | 3 |
+| JSON content fields | `TestReportingContent` | 2 |
+| Visitor: from-import, nested class, empty class, defaults, async | `TestVisitorEdgeCases` | 5 |
+| Magic number formats: bin, oct, underscore, hex whitelist | `TestMagicNumberEdgeCases` | 4 |
+| File discovery: .pyc, nested dirs, __pycache__ | `TestFileDiscovery` | 3 |
+| Parse error resilience | `TestParseErrorResilience` | 1 |
 
 ## Dependencies
 

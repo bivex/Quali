@@ -50,10 +50,32 @@ Coverage matrix — detector → test class:
 # Clean code → no smells                    TestCleanCode                    ✓
 # Smell metadata (category/severity)        TestSmellMetadata                ✓
 # Report aggregation                        TestReportAggregation            ✓
+
+# NEGATIVE TESTS                            TEST CLASS                    DONE
+# ─────────────────────────────────────────────────────────────────────────────
+# God Component (few classes)               TestGodComponentNegative         ✓
+# Feature Envy (own attrs)                  TestFeatureEnvyNegative          ✓
+# Hub-like (few bases)                      TestHubLikeNegative              ✓
+# Rebellious (minor override)               TestRebelliousHierarchyNegative  ✓
+# Complex Method (simple)                   TestComplexMethodNegative        ✓
+
+# METRICS EDGE CASES                        TEST CLASS                    DONE
+# ─────────────────────────────────────────────────────────────────────────────
+# LCOM=0, DIT deep, FANOUT, CC, NOM, NOPF   TestMetricsEdgeCases             ✓
+
+# CLI / REPORTING / INFRA                   TEST CLASS                    DONE
+# ─────────────────────────────────────────────────────────────────────────────
+# CLI errors, json format, version          TestCLIErrors                    ✓
+# JSON content fields                       TestReportingContent             ✓
+# Visitor: import from, nested class        TestVisitorEdgeCases             ✓
+# Magic number formats: bin, oct            TestMagicNumberEdgeCases         ✓
+# File discovery: .pyc, nested, __pycache__ TestFileDiscovery                ✓
+# Parse error resilience                    TestParseErrorResilience         ✓
 """
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 
@@ -932,3 +954,405 @@ class TestReportAggregation:
         report = ProjectReport(files=[fr])
         assert report.total_smells == 1
         assert report.total_metrics == 1
+
+
+# ===================================================================
+# 8. MISSING NEGATIVE TESTS
+# ===================================================================
+
+
+class TestGodComponentNegative:
+    """God Component should NOT fire when file is small."""
+
+    def test_not_triggered_for_few_classes(self):
+        classes = "\n".join(f"class C{i}: pass\n" for i in range(3))
+        smells = _smells_of(classes, "God Component")
+        assert len(smells) == 0
+
+
+class TestFeatureEnvyNegative:
+    """Feature Envy should NOT fire when method uses own class attrs."""
+
+    def test_not_triggered_for_own_attrs(self):
+        code = """\
+class Host:
+    def __init__(self):
+        self.x = 1
+        self.y = 2
+
+    def compute(self):
+        return self.x + self.y
+"""
+        smells = _smells_of(code, "Feature Envy")
+        assert len(smells) == 0
+
+
+class TestHubLikeNegative:
+    """Hub-like Modularization should NOT fire for few base classes."""
+
+    def test_not_triggered(self):
+        code = "class C(A, B): pass\n"
+        smells = _smells_of(code, "Hub-like Modularization")
+        assert len(smells) == 0
+
+
+class TestRebelliousHierarchyNegative:
+    """Rebellious Hierarchy should NOT fire for minor overrides."""
+
+    def test_not_triggered(self):
+        code = """\
+class Base:
+    def m0(self): pass
+    def m1(self): pass
+
+class Child(Base):
+    def m0(self): pass
+"""
+        smells = _smells_of(code, "Rebellious Hierarchy")
+        assert len(smells) == 0
+
+
+class TestComplexMethodNegative:
+    """Complex Method should NOT fire for simple functions."""
+
+    def test_not_triggered(self):
+        code = "def f(x):\n    return x + 1\n"
+        smells = _smells_of(code, "Complex Method")
+        assert len(smells) == 0
+
+
+# ===================================================================
+# 9. METRICS EDGE CASES
+# ===================================================================
+
+
+class TestMetricsEdgeCases:
+    """Verify OO metrics in edge-case scenarios."""
+
+    def test_lcom_zero_for_cohesive_class(self):
+        """All methods access the same fields → LCOM = 0."""
+        code = """\
+class Cohesive:
+    def __init__(self):
+        self.x = 0
+
+    def get(self):
+        return self.x
+
+    def set(self, val):
+        self.x = val
+"""
+        report = analyze_file_from_code(code)
+        lcom = [m for m in report.metrics if m.name == "LCOM"]
+        assert len(lcom) == 1
+        assert lcom[0].value == 0.0
+
+    def test_dit_for_deep_chain(self):
+        """6-level inheritance → DIT = 5."""
+        code = """\
+class A: pass
+class B(A): pass
+class C(B): pass
+class D(C): pass
+class E(D): pass
+class F(E): pass
+"""
+        report = analyze_file_from_code(code)
+        dit_values = {m.element: m.value for m in report.metrics if m.name == "DIT"}
+        assert dit_values["class A"] == 0
+        assert dit_values["class F"] == 5
+
+    def test_fanout_counts_imports(self):
+        """3 distinct imports → FANOUT = 3."""
+        code = """\
+import os
+import sys
+import json
+x = 1
+"""
+        report = analyze_file_from_code(code)
+        fanout = [m for m in report.metrics if m.name == "FANOUT"]
+        assert fanout[0].value == 3
+
+    def test_cc_for_nested_loops(self):
+        """Nested for + if → CC should be > 1."""
+        code = """\
+def f(items):
+    for i in items:
+        for j in items:
+            if i == j:
+                pass
+"""
+        report = analyze_file_from_code(code)
+        cc = [m for m in report.metrics if m.name == "CC" and "f" in m.element]
+        assert cc[0].value >= 3
+
+    def test_loc_for_class_counts_methods(self):
+        """Class with 5 methods → NOM = 5."""
+        code = """\
+class C:
+    def a(self): pass
+    def b(self): pass
+    def c(self): pass
+    def d(self): pass
+    def e(self): pass
+"""
+        report = analyze_file_from_code(code)
+        nom = [m for m in report.metrics if m.name == "NOM"]
+        assert nom[0].value == 5
+
+    def test_nopf_counts_only_public(self):
+        """2 private + 3 public fields → NOPF = 3."""
+        code = """\
+class C:
+    def __init__(self):
+        self._a = 1
+        self._b = 2
+        self.c = 3
+        self.d = 4
+        self.e = 5
+"""
+        report = analyze_file_from_code(code)
+        nopf = [m for m in report.metrics if m.name == "NOPF"]
+        assert nopf[0].value == 3
+
+
+# ===================================================================
+# 10. CLI EDGE CASES
+# ===================================================================
+
+
+class TestCLIErrors:
+    """CLI should handle bad input gracefully."""
+
+    def test_nonexistent_path_does_not_crash(self, capsys):
+        from quali2.cli import main
+
+        main(["/nonexistent/path/file.py"])
+        captured = capsys.readouterr()
+        assert "Files analyzed : 0" in captured.out
+
+    def test_json_format_flag(self, tmp_path, capsys):
+        from quali2.cli import main
+
+        fp = tmp_path / "a.py"
+        fp.write_text("x = 1\n")
+        main([str(fp), "--format", "json"])
+        captured = capsys.readouterr()
+        # Should be valid JSON
+        import json
+
+        data = json.loads(captured.out)
+        assert data["summary"]["files_analyzed"] == 1
+
+    def test_version_flag(self, capsys):
+        from quali2.cli import main
+
+        with pytest.raises(SystemExit):
+            main(["--version"])
+
+
+# ===================================================================
+# 11. REPORTING CONTENT VERIFICATION
+# ===================================================================
+
+
+class TestReportingContent:
+    """Verify JSON output contains expected fields."""
+
+    def test_json_contains_smell_details(self):
+        code = """\
+try:
+    x = 1
+except ValueError:
+    pass
+"""
+        report = analyze_file_from_code(code)
+        from quali2.domain.models import ProjectReport
+        from quali2.reporting import format_json
+
+        project = ProjectReport(files=[report])
+        data = json.loads(format_json(project))
+
+        file_data = data["files"][0]
+        assert len(file_data["smells"]) > 0
+        smell = file_data["smells"][0]
+        assert "smell_type" in smell
+        assert "category" in smell
+        assert "severity" in smell
+        assert "line" in smell
+        assert "message" in smell
+
+    def test_json_contains_metric_values(self):
+        code = "x = 1\n"
+        report = analyze_file_from_code(code)
+        from quali2.domain.models import ProjectReport
+        from quali2.reporting import format_json
+
+        project = ProjectReport(files=[report])
+        data = json.loads(format_json(project))
+
+        file_data = data["files"][0]
+        assert len(file_data["metrics"]) > 0
+        metric = file_data["metrics"][0]
+        assert "name" in metric
+        assert "value" in metric
+        assert "element" in metric
+
+
+# ===================================================================
+# 12. VISITOR EDGE CASES
+# ===================================================================
+
+
+class TestVisitorEdgeCases:
+    """Verify ANTLR4 visitor handles various Python constructs."""
+
+    def test_import_from(self):
+        """from x import y should be captured."""
+        code = "from os.path import join, exists\n"
+        report = analyze_file_from_code(code)
+        assert report.analysis is not None
+        modules = [i.module for i in report.analysis.imports]
+        assert "os.path" in modules
+
+    def test_nested_classes(self):
+        """Inner class should be detected."""
+        code = """\
+class Outer:
+    class Inner:
+        def m(self):
+            pass
+"""
+        report = analyze_file_from_code(code)
+        class_names = [c.name for c in report.analysis.classes]
+        assert "Outer" in class_names
+        assert "Inner" in class_names
+
+    def test_class_with_no_methods(self):
+        """Empty class should not crash."""
+        code = "class Empty: pass\n"
+        report = analyze_file_from_code(code)
+        assert report.analysis is not None
+        assert len(report.analysis.classes) == 1
+        assert len(report.analysis.classes[0].methods) == 0
+
+    def test_function_with_default_args(self):
+        """Default args should be counted in PC."""
+        code = "def f(a, b=1, c=2): pass\n"
+        report = analyze_file_from_code(code)
+        pc = [m for m in report.metrics if m.name == "PC"]
+        assert pc[0].value == 3
+
+    def test_async_function(self):
+        """async def should be detected as function."""
+        code = "async def fetch():\n    pass\n"
+        report = analyze_file_from_code(code)
+        assert report.analysis is not None
+        func_names = [f.name for f in report.analysis.top_level_functions]
+        assert "fetch" in func_names
+
+
+# ===================================================================
+# 13. MAGIC NUMBER EDGE CASES
+# ===================================================================
+
+
+class TestMagicNumberEdgeCases:
+    """Additional numeric literal formats."""
+
+    def test_binary_literal(self):
+        code = "def f():\n    return x + 0b10101010\n"
+        smells = _smells_of(code, "Magic Number")
+        assert len(smells) >= 1
+
+    def test_octal_literal(self):
+        code = "def f():\n    return x + 0o1234\n"
+        smells = _smells_of(code, "Magic Number")
+        assert len(smells) >= 1
+
+    def test_underscore_separator(self):
+        """ANTLR4 Python3 grammar does not support underscore digit separators.
+        This test verifies graceful handling — the number is tokenized as
+        separate tokens but the tool does not crash."""
+        code = "def f():\n    return x + 1_000_000\n"
+        # Should not crash; at least one number may be detected
+        smells = _analyze(code)
+        assert isinstance(smells, list)
+
+    def test_not_triggered_for_whitelisted_hex(self):
+        """0xFF (255) is whitelisted."""
+        code = "def f():\n    return 0xFF\n"
+        smells = _smells_of(code, "Magic Number")
+        assert len(smells) == 0
+
+
+# ===================================================================
+# 14. FILE DISCOVERY TESTS
+# ===================================================================
+
+
+class TestFileDiscovery:
+    """Verify project file discovery logic."""
+
+    def test_pyc_ignored(self, tmp_path):
+        from quali2.analysis.engine import _discover_files
+
+        (tmp_path / "good.py").write_text("x = 1\n")
+        (tmp_path / "bad.pyc").write_bytes(b"\x00")
+        files = _discover_files(str(tmp_path))
+        assert all(f.endswith(".py") for f in files)
+        assert len(files) == 1
+
+    def test_nested_directories(self, tmp_path):
+        from quali2.analysis.engine import _discover_files
+
+        sub = tmp_path / "sub"
+        sub.mkdir()
+        (tmp_path / "a.py").write_text("x = 1\n")
+        (sub / "b.py").write_text("y = 2\n")
+        files = _discover_files(str(tmp_path))
+        assert len(files) == 2
+
+    def test_dunder_dirs_ignored(self, tmp_path):
+        from quali2.analysis.engine import _discover_files
+
+        cache = tmp_path / "__pycache__"
+        cache.mkdir()
+        (cache / "cached.py").write_text("x = 1\n")
+        (tmp_path / "good.py").write_text("y = 2\n")
+        files = _discover_files(str(tmp_path))
+        assert len(files) == 1
+        assert "good.py" in files[0]
+
+
+# ===================================================================
+# 15. PARSE ERROR RESILIENCE
+# ===================================================================
+
+
+class TestParseErrorResilience:
+    """Tool should not crash on invalid Python."""
+
+    def test_invalid_syntax_returns_report(self):
+        code = "def f(:\n    pass\n"
+        report = analyze_file_from_code(code)
+        assert report.file_path is not None
+        assert report.analysis is not None
+        assert report.analysis.total_lines > 0
+
+
+# ===================================================================
+# Helper — analyze a code string without writing to disk
+# ===================================================================
+
+
+def analyze_file_from_code(code: str):
+    """Write code to a temp file and run analyze_file."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+        f.write(code)
+        f.flush()
+        try:
+            return analyze_file(f.name)
+        finally:
+            os.unlink(f.name)

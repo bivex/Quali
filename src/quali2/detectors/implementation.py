@@ -103,6 +103,15 @@ WHITELISTED_NUMBERS: set[str] = {
     # Char codes
     "255",
     "127",
+    # Hex equivalents
+    "0xff",
+    "0xFF",
+    "0x0",
+    "0x00",
+    # Octal equivalents
+    "0o755",
+    "0o644",
+    "0o0",
 }
 
 # Matches a numeric literal (int, float, hex, oct, bin, complex)
