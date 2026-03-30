@@ -164,7 +164,7 @@ source .venv/bin/activate
 PYTHONPATH=src pytest tests/ -v
 ```
 
-81 tests. Coverage matrix — detector → test class:
+97 tests. Coverage matrix — detector → test class:
 
 ### Architecture (3 test classes, 6 tests)
 
@@ -190,7 +190,7 @@ PYTHONPATH=src pytest tests/ -v
 | Broken Hierarchy | `TestBrokenHierarchy` | ✓ | ✓ |
 | Broken Modularization | — | ✗ no detector impl | |
 
-### Implementation (11 test classes, 18 tests)
+### Implementation (11 test classes, 34 tests)
 
 | Detector | Test Class | +Case | −Case |
 |---|---|---|---|
@@ -201,7 +201,7 @@ PYTHONPATH=src pytest tests/ -v
 | Long Method | `TestLongMethod` | ✓ | ✓ |
 | Long Parameter List | `TestLongParameterList` | ✓ | ✓ |
 | Long Statement | `TestLongStatement` | ✓ | ✓ |
-| Magic Number | `TestMagicNumber` | ✓ | ✓ |
+| Magic Number | `TestMagicNumber` | 10 +Cases | 8 −Cases |
 | Missing Default | `TestMissingDefault` | ✓ | ✓ |
 | Long Lambda Function | `TestLongLambdaFunction` | ✓ | ✓ |
 | Long Message Chain | `TestLongMessageChain` | ✓ | ✓ |

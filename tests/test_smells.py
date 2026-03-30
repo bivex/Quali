@@ -31,7 +31,7 @@ Coverage matrix — detector → test class:
 # Long Method                               TestLongMethod                   ✓
 # Long Parameter List                       TestLongParameterList            ✓
 # Long Statement                            TestLongStatement                ✓
-# Magic Number                              TestMagicNumber                  ✓
+# Magic Number                              TestMagicNumber                  ✓  (18 tests)
 # Missing Default                           TestMissingDefault               ✓
 # Long Lambda Function                      TestLongLambdaFunction           ✓
 # Long Message Chain                        TestLongMessageChain             ✓
@@ -467,15 +467,105 @@ class TestLongStatement:
 
 
 class TestMagicNumber:
-    """Non-obvious numeric literal used in an expression."""
+    """Magic number detection via ANTLR4 token stream with comprehensive whitelist."""
 
-    def test_triggered(self):
+    # ── Positive cases: magic numbers in various positions ──
+
+    def test_in_return_expression(self):
         code = "def f():\n    return 31337 + x\n"
         smells = _smells_of(code, "Magic Number")
         assert any("31337" in s.message for s in smells)
 
-    def test_not_triggered_for_common(self):
+    def test_at_end_of_return(self):
+        code = "def f():\n    return x + 31337\n"
+        smells = _smells_of(code, "Magic Number")
+        assert any("31337" in s.message for s in smells)
+
+    def test_in_call_argument(self):
+        code = "def f():\n    sleep(37)\n"
+        smells = _smells_of(code, "Magic Number")
+        assert any("37" in s.message for s in smells)
+
+    def test_in_comparison(self):
+        code = "def f(x):\n    if x == 42:\n        pass\n"
+        smells = _smells_of(code, "Magic Number")
+        assert any("42" in s.message for s in smells)
+
+    def test_in_arithmetic(self):
+        code = "def f(x):\n    return x * 31337\n"
+        smells = _smells_of(code, "Magic Number")
+        assert any("31337" in s.message for s in smells)
+
+    def test_in_variable_assignment(self):
+        code = "def f():\n    timeout = 37\n    return timeout\n"
+        smells = _smells_of(code, "Magic Number")
+        assert any("37" in s.message for s in smells)
+
+    def test_float_literal(self):
+        code = "def f():\n    return x * 3.14159\n"
+        smells = _smells_of(code, "Magic Number")
+        assert any("3.14159" in s.message for s in smells)
+
+    def test_in_nested_function(self):
+        code = """\
+class C:
+    def m(self):
+        return self.x + 888
+"""
+        smells = _smells_of(code, "Magic Number")
+        assert any("888" in s.message for s in smells)
+
+    def test_multiple_on_same_line(self):
+        code = "def f():\n    return x * 31337 + 8080\n"
+        smells = _smells_of(code, "Magic Number")
+        nums = {s.message.split("'")[1] for s in smells}
+        assert "31337" in nums
+        assert "8080" in nums
+
+    def test_hex_literal(self):
+        code = "def f():\n    return x + 0xDEADBEEF\n"
+        smells = _smells_of(code, "Magic Number")
+        assert any("DEADBEEF" in s.message.upper() for s in smells)
+
+    # ── Negative cases: numbers that should NOT be flagged ──
+
+    def test_not_triggered_for_single_digits(self):
         code = "def f():\n    return x + 1\n"
+        smells = _smells_of(code, "Magic Number")
+        assert len(smells) == 0
+
+    def test_not_triggered_for_whitelisted_http_codes(self):
+        code = "def f():\n    return 200\n"
+        smells = _smells_of(code, "Magic Number")
+        assert len(smells) == 0
+
+    def test_not_triggered_for_whitelisted_sizes(self):
+        code = "def f():\n    return 1024\n"
+        smells = _smells_of(code, "Magic Number")
+        assert len(smells) == 0
+
+    def test_not_triggered_for_constant_assignment(self):
+        code = "TIMEOUT_SECONDS = 30\n\ndef f():\n    return TIMEOUT_SECONDS\n"
+        smells = _smells_of(code, "Magic Number")
+        assert len(smells) == 0
+
+    def test_not_triggered_in_string(self):
+        code = 'def f():\n    return "port 8080"\n'
+        smells = _smells_of(code, "Magic Number")
+        assert len(smells) == 0
+
+    def test_not_triggered_in_comment(self):
+        code = "def f():\n    # port 8080\n    return 1\n"
+        smells = _smells_of(code, "Magic Number")
+        assert len(smells) == 0
+
+    def test_not_triggered_for_zero(self):
+        code = "def f():\n    return x + 0\n"
+        smells = _smells_of(code, "Magic Number")
+        assert len(smells) == 0
+
+    def test_not_triggered_for_neg_one(self):
+        code = "def f():\n    return -1\n"
         smells = _smells_of(code, "Magic Number")
         assert len(smells) == 0
 
