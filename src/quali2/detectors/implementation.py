@@ -139,7 +139,11 @@ CONSTANT_ASSIGN_RE = re.compile(
 )
 
 
-def detect_implementation_smells(data: AnalysisData, source: str) -> list[Smell]:
+def detect_implementation_smells(
+    data: AnalysisData,
+    source: str,
+    token_stream: CommonTokenStream | None = None,
+) -> list[Smell]:
     smells: list[Smell] = []
     fp = data.file_path
     lines = source.splitlines()
@@ -215,7 +219,7 @@ def detect_implementation_smells(data: AnalysisData, source: str) -> list[Smell]
         )
 
     # ── Magic Numbers (ANTLR4 token-stream based) ──────────────────────
-    smells.extend(_detect_magic_numbers(fp, source))
+    smells.extend(_detect_magic_numbers(fp, source, token_stream))
 
     # ── Line-level checks ──────────────────────────────────────────────
     for i, line in enumerate(lines, 1):
@@ -308,11 +312,15 @@ def detect_implementation_smells(data: AnalysisData, source: str) -> list[Smell]
 # ---------------------------------------------------------------------------
 
 
-def _detect_magic_numbers(fp: str, source: str) -> list[Smell]:
+def _detect_magic_numbers(
+    fp: str,
+    source: str,
+    token_stream: CommonTokenStream | None = None,
+) -> list[Smell]:
     """Detect magic numbers using ANTLR4 tokenisation.
 
     Strategy:
-      1. Lex the source to get all NUMBER tokens with their positions.
+      1. Reuse token_stream if provided, else lex the source.
       2. For each NUMBER token, extract the full line of source.
       3. Skip if the number is in the whitelist.
       4. Skip if the line is a constant assignment (UPPER_CASE = number).
@@ -321,11 +329,14 @@ def _detect_magic_numbers(fp: str, source: str) -> list[Smell]:
     """
     smells: list[Smell] = []
 
-    # Build token stream
-    input_stream = InputStream(source)
-    lexer = Python3Lexer(input_stream)
-    token_stream = CommonTokenStream(lexer)
-    token_stream.fill()
+    # Build or reuse token stream
+    if token_stream is not None:
+        token_stream.fill()
+    else:
+        input_stream = InputStream(source)
+        lexer = Python3Lexer(input_stream)
+        token_stream = CommonTokenStream(lexer)
+        token_stream.fill()
 
     lines = source.splitlines()
 
