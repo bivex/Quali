@@ -74,7 +74,7 @@ def analyze_file(file_path: str) -> FileReport:
     smells.extend(detect_architecture_smells(data))
     smells.extend(detect_design_smells(data, source))
     smells.extend(detect_implementation_smells(data, source, token_stream))
-    smells.extend(detect_ml_smells(data, source))
+    smells.extend(detect_ml_smells(data, source, token_stream))
 
     return FileReport(
         file_path=file_path,
@@ -97,7 +97,7 @@ def analyze_project(path: str) -> ProjectReport:
         smells.extend(detect_architecture_smells(data))
         smells.extend(detect_design_smells(data, source))
         smells.extend(detect_implementation_smells(data, source, token_stream))
-        smells.extend(detect_ml_smells(data, source))
+        smells.extend(detect_ml_smells(data, source, token_stream))
         reports.append(
             FileReport(file_path=f, smells=smells, metrics=metrics, analysis=data)
         )
