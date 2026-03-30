@@ -1,7 +1,55 @@
 """Comprehensive smell detection tests for Quali2.
 
-Covers every smell type across all four categories:
-  Architecture (4), Design (10), Implementation (11), ML (6).
+Coverage matrix — detector → test class:
+
+# ARCHITECTURE DETECTORS                    TEST CLASS                    DONE
+# ─────────────────────────────────────────────────────────────────────────────
+# God Component (LOC)                       TestGodComponent                 ✓
+# God Component (classes)                   TestGodComponent                 ✓
+# Feature Concentration                     TestFeatureConcentration         ✓
+# Dense Structure                           TestDenseStructure               ✓
+
+# DESIGN DETECTORS                          TEST CLASS                    DONE
+# ─────────────────────────────────────────────────────────────────────────────
+# Multifaceted Abstraction                  TestMultifacetedAbstraction      ✓
+# Feature Envy                              TestFeatureEnvy                  ✓
+# Deficient Encapsulation                   TestDeficientEncapsulation       ✓
+# Insufficient Modularization               TestInsufficientModularization   ✓
+# Hub-like Modularization                   TestHubLikeModularization        ✓
+# Deep Hierarchy                            TestDeepHierarchy                ✓
+# Wide Hierarchy                            TestWideHierarchy                ✓
+# Rebellious Hierarchy                      TestRebelliousHierarchy          ✓
+# Broken Hierarchy                          TestBrokenHierarchy              ✓
+# Broken Modularization                     (not yet — no detector impl)     ✗
+
+# IMPLEMENTATION DETECTORS                  TEST CLASS                    DONE
+# ─────────────────────────────────────────────────────────────────────────────
+# Complex Conditional                       TestComplexConditional           ✓
+# Complex Method                            TestComplexMethod                ✓
+# Empty Catch Clause                        TestEmptyCatchClause             ✓
+# Long Identifier                           TestLongIdentifier               ✓
+# Long Method                               TestLongMethod                   ✓
+# Long Parameter List                       TestLongParameterList            ✓
+# Long Statement                            TestLongStatement                ✓
+# Magic Number                              TestMagicNumber                  ✓
+# Missing Default                           TestMissingDefault               ✓
+# Long Lambda Function                      TestLongLambdaFunction           ✓
+# Long Message Chain                        TestLongMessageChain             ✓
+
+# ML DETECTORS                              TEST CLASS                    DONE
+# ─────────────────────────────────────────────────────────────────────────────
+# Ambiguous Merge Key                       TestAmbiguousMergeKey            ✓
+# Broken NaN Check                          TestBrokenNaNCheck               ✓
+# Chain Indexing                            TestChainIndexing                ✓
+# Forward Bypass                            TestForwardBypass                ✓
+# Type Blind Conversion                     TestTypeBlindConversion          ✓
+# Unnecessary Iteration                     TestUnnecessaryIteration         ✓
+
+# CROSS-CUTTING                             TEST CLASS                    DONE
+# ─────────────────────────────────────────────────────────────────────────────
+# Clean code → no smells                    TestCleanCode                    ✓
+# Smell metadata (category/severity)        TestSmellMetadata                ✓
+# Report aggregation                        TestReportAggregation            ✓
 """
 
 from __future__ import annotations

@@ -164,14 +164,66 @@ source .venv/bin/activate
 PYTHONPATH=src pytest tests/ -v
 ```
 
-81 tests covering:
-- Every smell type (positive + negative cases)
-- OO metrics computation
-- Report aggregation (by category, by severity, totals)
-- Output formatting (text, JSON)
-- CLI entry point
-- Project-level analysis (multi-file)
-- Domain model metadata (category/severity assignment)
+81 tests. Coverage matrix — detector → test class:
+
+### Architecture (3 test classes, 6 tests)
+
+| Detector | Test Class | +Case | −Case |
+|---|---|---|---|
+| God Component (LOC) | `TestGodComponent` | ✓ | ✓ |
+| God Component (classes) | `TestGodComponent` | ✓ | |
+| Feature Concentration | `TestFeatureConcentration` | ✓ | ✓ |
+| Dense Structure | `TestDenseStructure` | ✓ | ✓ |
+
+### Design (9 test classes, 14 tests)
+
+| Detector | Test Class | +Case | −Case |
+|---|---|---|---|
+| Multifaceted Abstraction | `TestMultifacetedAbstraction` | ✓ | ✓ |
+| Feature Envy | `TestFeatureEnvy` | ✓ | |
+| Deficient Encapsulation | `TestDeficientEncapsulation` | ✓ | ✓ |
+| Insufficient Modularization | `TestInsufficientModularization` | ✓ | ✓ |
+| Hub-like Modularization | `TestHubLikeModularization` | ✓ | |
+| Deep Hierarchy | `TestDeepHierarchy` | ✓ | ✓ |
+| Wide Hierarchy | `TestWideHierarchy` | ✓ | ✓ |
+| Rebellious Hierarchy | `TestRebelliousHierarchy` | ✓ | |
+| Broken Hierarchy | `TestBrokenHierarchy` | ✓ | ✓ |
+| Broken Modularization | — | ✗ no detector impl | |
+
+### Implementation (11 test classes, 18 tests)
+
+| Detector | Test Class | +Case | −Case |
+|---|---|---|---|
+| Complex Conditional | `TestComplexConditional` | ✓ | ✓ |
+| Complex Method | `TestComplexMethod` | ✓ | |
+| Empty Catch Clause | `TestEmptyCatchClause` | ✓, ✓ | ✓ |
+| Long Identifier | `TestLongIdentifier` | ✓ | ✓ |
+| Long Method | `TestLongMethod` | ✓ | ✓ |
+| Long Parameter List | `TestLongParameterList` | ✓ | ✓ |
+| Long Statement | `TestLongStatement` | ✓ | ✓ |
+| Magic Number | `TestMagicNumber` | ✓ | ✓ |
+| Missing Default | `TestMissingDefault` | ✓ | ✓ |
+| Long Lambda Function | `TestLongLambdaFunction` | ✓ | ✓ |
+| Long Message Chain | `TestLongMessageChain` | ✓ | ✓ |
+
+### ML (6 test classes, 11 tests)
+
+| Detector | Test Class | +Case | −Case |
+|---|---|---|---|
+| Ambiguous Merge Key | `TestAmbiguousMergeKey` | ✓ | ✓ |
+| Broken NaN Check | `TestBrokenNaNCheck` | ✓, ✓ | ✓ |
+| Chain Indexing | `TestChainIndexing` | ✓ | ✓ |
+| Forward Bypass | `TestForwardBypass` | ✓ | ✓ |
+| Type Blind Conversion | `TestTypeBlindConversion` | ✓ | ✓ |
+| Unnecessary Iteration | `TestUnnecessaryIteration` | ✓, ✓ | ✓ |
+
+### Cross-cutting (3 test classes, 12 tests)
+
+| Area | Test Class | Tests |
+|---|---|---|
+| Clean code → no false positives | `TestCleanCode` | 3 |
+| Smell metadata (category/severity) | `TestSmellMetadata` | 4 + 4 parametrized |
+| Report aggregation | `TestReportAggregation` | 3 |
 
 ## Dependencies
 
