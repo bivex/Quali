@@ -134,7 +134,7 @@ NUMBER_PATTERN = re.compile(
 
 # Pattern that matches a constant assignment line:  UPPER_CASE = number
 CONSTANT_ASSIGN_RE = re.compile(
-    r"^\s*[A-Z][A-Z0-9_]*\s*=\s*\S",
+    r"^[ \t]*[A-Z][A-Z0-9_]*[ \t]*=[ \t]*\S",
     re.MULTILINE,
 )
 

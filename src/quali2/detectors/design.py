@@ -14,6 +14,7 @@ INSUFFICIENT_LOC = 500
 HUB_LIKE_FAN = 15
 WIDE_HIERARCHY_CHILDREN = 10
 DEEP_HIERARCHY_DEPTH = 5
+FEATURE_ENVY_OWN_RATIO = 0.3
 
 
 def detect_design_smells(data: AnalysisData, source: str = "") -> list[Smell]:
@@ -54,7 +55,7 @@ def detect_design_smells(data: AnalysisData, source: str = "") -> list[Smell]:
             own_accesses = m.accesses_attrs & own_attrs
             if (
                 len(m.accesses_attrs) > 3
-                and len(own_accesses) < len(m.accesses_attrs) * 0.3
+                and len(own_accesses) < len(m.accesses_attrs) * FEATURE_ENVY_OWN_RATIO
             ):
                 smells.append(
                     Smell.create(
