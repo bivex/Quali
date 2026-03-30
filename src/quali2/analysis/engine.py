@@ -12,7 +12,10 @@ from quali2.antlr.Python3Parser import Python3Parser
 from quali2.analysis.metrics import compute_metrics
 from quali2.analysis.visitor import PythonAnalysisVisitor
 from quali2.domain.models import AnalysisData, FileReport, ProjectReport, Smell
-from quali2.detectors.architecture import detect_architecture_smells
+from quali2.detectors.architecture import (
+    detect_architecture_smells,
+    detect_cross_file_smells,
+)
 from quali2.detectors.design import detect_design_smells
 from quali2.detectors.implementation import detect_implementation_smells
 from quali2.detectors.ml import detect_ml_smells
@@ -61,7 +64,32 @@ def analyze_file(file_path: str) -> FileReport:
 def analyze_project(path: str) -> ProjectReport:
     """Analyze a directory or single Python file."""
     files = _discover_files(path)
-    reports = [analyze_file(f) for f in files]
+
+    # Per-file analysis
+    reports: list[FileReport] = []
+    all_data: list[AnalysisData] = []
+    for f in files:
+        data, source = parse_file(f)
+        metrics = compute_metrics(data)
+        smells: list[Smell] = []
+        smells.extend(detect_architecture_smells(data))
+        smells.extend(detect_design_smells(data, source))
+        smells.extend(detect_implementation_smells(data, source))
+        smells.extend(detect_ml_smells(data, source))
+        reports.append(
+            FileReport(file_path=f, smells=smells, metrics=metrics, analysis=data)
+        )
+        all_data.append(data)
+
+    # Cross-file analysis
+    if len(all_data) > 1:
+        cross_smells = detect_cross_file_smells(all_data)
+        # Distribute cross-file smells to the correct file reports
+        report_map = {r.file_path: r for r in reports}
+        for s in cross_smells:
+            if s.file_path in report_map:
+                report_map[s.file_path].smells.append(s)
+
     return ProjectReport(files=reports)
 
 

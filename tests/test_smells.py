@@ -1343,6 +1343,139 @@ class TestParseErrorResilience:
 
 
 # ===================================================================
+# 16. UNSTABLE DEPENDENCY TESTS
+# ===================================================================
+
+
+class TestUnstableDependency:
+    """Unstable Dependency: file depends on highly unstable modules.
+
+    Instability I = fan_out / (fan_in + fan_out).
+    A smell fires when the file's deps have I > 0.8.
+    """
+
+    def _make_project(self, tmp_path, files: dict[str, str]) -> str:
+        """Create a multi-file project in tmp_path, return the dir path."""
+        for name, content in files.items():
+            fp = tmp_path / name
+            fp.parent.mkdir(parents=True, exist_ok=True)
+            fp.write_text(content)
+        # __init__.py for package detection
+        (tmp_path / "__init__.py").write_text("")
+        return str(tmp_path)
+
+    def test_triggered_leaf_module(self, tmp_path):
+        """Leaf module (nobody imports it, it imports many) → I=1.0."""
+        from quali2.analysis.engine import analyze_project
+
+        self._make_project(
+            tmp_path,
+            {
+                "__init__.py": "",
+                "base.py": "x = 1\n",
+                "helper.py": "import base\ny = 2\n",
+                "util.py": "import base\nz = 3\n",
+                "leaf.py": "import base\nimport helper\nimport util\nw = 4\n",
+            },
+        )
+        report = analyze_project(str(tmp_path))
+        leaf_report = next(f for f in report.files if "leaf.py" in f.file_path)
+        smell_types = {s.smell_type.value for s in leaf_report.smells}
+        assert "Unstable Dependency" in smell_types
+
+    def test_not_triggered_stable_module(self, tmp_path):
+        """Module imported by many, imports few → stable, no smell."""
+        from quali2.analysis.engine import analyze_project
+
+        self._make_project(
+            tmp_path,
+            {
+                "__init__.py": "",
+                "core.py": "x = 1\n",
+                "a.py": "import core\ny = 2\n",
+                "b.py": "import core\nz = 3\n",
+                "c.py": "import core\nw = 4\n",
+            },
+        )
+        report = analyze_project(str(tmp_path))
+        core_report = next(f for f in report.files if "core.py" in f.file_path)
+        smell_types = {s.smell_type.value for s in core_report.smells}
+        assert "Unstable Dependency" not in smell_types
+
+    def test_single_file_no_smell(self):
+        """Single file with no local imports → no smell."""
+        from quali2.analysis.engine import analyze_file
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+            f.write("import os\nx = 1\n")
+            f.flush()
+            try:
+                report = analyze_file(f.name)
+                smell_types = {s.smell_type.value for s in report.smells}
+                assert "Unstable Dependency" not in smell_types
+            finally:
+                os.unlink(f.name)
+
+
+# ===================================================================
+# 17. BROKEN MODULARIZATION TESTS
+# ===================================================================
+
+
+class TestBrokenModularization:
+    """Broken Modularization: related responsibilities scattered across files.
+
+    Fires when two files share many local imports, suggesting the
+    concern should be consolidated.
+    """
+
+    def _make_project(self, tmp_path, files: dict[str, str]) -> str:
+        for name, content in files.items():
+            fp = tmp_path / name
+            fp.parent.mkdir(parents=True, exist_ok=True)
+            fp.write_text(content)
+        (tmp_path / "__init__.py").write_text("")
+        return str(tmp_path)
+
+    def test_triggered_shared_imports(self, tmp_path):
+        """Two files importing the same 7 local modules."""
+        from quali2.analysis.engine import analyze_project
+
+        # Create 7 shared modules + 2 files that both import all 7
+        shared = {f"m{i}.py": f"x{i} = {i}\n" for i in range(7)}
+        shared["__init__.py"] = ""
+        shared["a.py"] = "\n".join(f"import m{i}" for i in range(7)) + "\n"
+        shared["b.py"] = "\n".join(f"import m{i}" for i in range(7)) + "\n"
+
+        self._make_project(tmp_path, shared)
+        report = analyze_project(str(tmp_path))
+        all_smell_types = set()
+        for fr in report.files:
+            all_smell_types.update(s.smell_type.value for s in fr.smells)
+        assert "Broken Modularization" in all_smell_types
+
+    def test_not_triggered_few_shared(self, tmp_path):
+        """Two files sharing only 2 local imports → no smell."""
+        from quali2.analysis.engine import analyze_project
+
+        self._make_project(
+            tmp_path,
+            {
+                "__init__.py": "",
+                "m0.py": "x = 0\n",
+                "m1.py": "x = 1\n",
+                "a.py": "import m0\nimport m1\nx = 2\n",
+                "b.py": "import m0\nimport m1\nx = 3\n",
+            },
+        )
+        report = analyze_project(str(tmp_path))
+        all_smell_types = set()
+        for fr in report.files:
+            all_smell_types.update(s.smell_type.value for s in fr.smells)
+        assert "Broken Modularization" not in all_smell_types
+
+
+# ===================================================================
 # Helper — analyze a code string without writing to disk
 # ===================================================================
 
