@@ -20,7 +20,7 @@ Coverage matrix — detector → test class:
 # Wide Hierarchy                            TestWideHierarchy                ✓
 # Rebellious Hierarchy                      TestRebelliousHierarchy          ✓
 # Broken Hierarchy                          TestBrokenHierarchy              ✓
-# Broken Modularization                     (not yet — no detector impl)     ✗
+# Broken Modularization                        TestBrokenModularization         ✓
 
 # IMPLEMENTATION DETECTORS                  TEST CLASS                    DONE
 # ─────────────────────────────────────────────────────────────────────────────
@@ -71,6 +71,11 @@ Coverage matrix — detector → test class:
 # Magic number formats: bin, oct            TestMagicNumberEdgeCases         ✓
 # File discovery: .pyc, nested, __pycache__ TestFileDiscovery                ✓
 # Parse error resilience                    TestParseErrorResilience         ✓
+
+# CROSS-FILE DETECTORS                      TEST CLASS                    DONE
+# ─────────────────────────────────────────────────────────────────────────────
+# Unstable Dependency                       TestUnstableDependency           ✓
+# Broken Modularization                     TestBrokenModularization         ✓
 """
 
 from __future__ import annotations
@@ -1365,7 +1370,7 @@ class TestUnstableDependency:
         return str(tmp_path)
 
     def test_triggered_leaf_module(self, tmp_path):
-        """Leaf module (nobody imports it, it imports many) → I=1.0."""
+        """Leaf module imports modules that have I=1.0 (nobody imports them)."""
         from quali2.analysis.engine import analyze_project
 
         self._make_project(
@@ -1373,9 +1378,10 @@ class TestUnstableDependency:
             {
                 "__init__.py": "",
                 "base.py": "x = 1\n",
-                "helper.py": "import base\ny = 2\n",
-                "util.py": "import base\nz = 3\n",
-                "leaf.py": "import base\nimport helper\nimport util\nw = 4\n",
+                "helper_a.py": "import base\ny = 2\n",
+                "helper_b.py": "import base\nz = 3\n",
+                "helper_c.py": "import base\nw = 4\n",
+                "leaf.py": "import helper_a\nimport helper_b\nimport helper_c\nv = 5\n",
             },
         )
         report = analyze_project(str(tmp_path))

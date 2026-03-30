@@ -164,7 +164,7 @@ source .venv/bin/activate
 PYTHONPATH=src pytest tests/ -v
 ```
 
-126 tests. Coverage matrix — detector → test class:
+131 tests. Coverage matrix — detector → test class:
 
 ### Architecture (3 test classes, 6 tests)
 
@@ -175,20 +175,19 @@ PYTHONPATH=src pytest tests/ -v
 | Feature Concentration | `TestFeatureConcentration` | ✓ | ✓ |
 | Dense Structure | `TestDenseStructure` | ✓ | ✓ |
 
-### Design (9 test classes, 14 tests)
+### Design (10 test classes, 16 tests)
 
 | Detector | Test Class | +Case | −Case |
 |---|---|---|---|
 | Multifaceted Abstraction | `TestMultifacetedAbstraction` | ✓ | ✓ |
-| Feature Envy | `TestFeatureEnvy` | ✓ | |
+| Feature Envy | `TestFeatureEnvy` + `TestFeatureEnvyNegative` | ✓ | ✓ |
 | Deficient Encapsulation | `TestDeficientEncapsulation` | ✓ | ✓ |
 | Insufficient Modularization | `TestInsufficientModularization` | ✓ | ✓ |
-| Hub-like Modularization | `TestHubLikeModularization` | ✓ | |
+| Hub-like Modularization | `TestHubLikeModularization` + `TestHubLikeNegative` | ✓ | ✓ |
 | Deep Hierarchy | `TestDeepHierarchy` | ✓ | ✓ |
 | Wide Hierarchy | `TestWideHierarchy` | ✓ | ✓ |
-| Rebellious Hierarchy | `TestRebelliousHierarchy` | ✓ | |
+| Rebellious Hierarchy | `TestRebelliousHierarchy` + `TestRebelliousHierarchyNegative` | ✓ | ✓ |
 | Broken Hierarchy | `TestBrokenHierarchy` | ✓ | ✓ |
-| Broken Modularization | — | ✗ no detector impl | |
 
 ### Implementation (11 test classes, 34 tests)
 
@@ -256,6 +255,13 @@ PYTHONPATH=src pytest tests/ -v
 | Magic number formats: bin, oct, underscore, hex whitelist | `TestMagicNumberEdgeCases` | 4 |
 | File discovery: .pyc, nested dirs, __pycache__ | `TestFileDiscovery` | 3 |
 | Parse error resilience | `TestParseErrorResilience` | 1 |
+
+### Cross-file (2 test classes, 5 tests)
+
+| Detector | Test Class | +Case | −Case |
+|---|---|---|---|
+| Unstable Dependency | `TestUnstableDependency` | ✓ | ✓, ✓ |
+| Broken Modularization | `TestBrokenModularization` | ✓ | ✓ |
 
 ## Dependencies
 
