@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# pythonq — Python with quali2 pre-run quality gate
+# Usage: pythonq script.py [args...]
+# Analyzes the script with quali2 before execution.
+
+set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+    echo "Usage: pythonq <script.py> [args...]" >&2
+    exit 1
+fi
+
+TARGET="$1"
+
+if [[ "$TARGET" == "-h" || "$TARGET" == "--help" ]]; then
+    echo "pythonq — Python with quali2 pre-run quality gate"
+    echo ""
+    echo "Usage: pythonq <script.py> [args...]"
+    echo ""
+    echo "Analyzes the script with quali2 before execution."
+    echo "Smells are printed to stderr, then the script runs normally."
+    exit 0
+fi
+
+if [[ ! -f "$TARGET" ]]; then
+    echo "Error: file '$TARGET' not found" >&2
+    exit 1
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Try installed package first
+if python3 -c "import quali2" 2>/dev/null; then
+    python3 -m quali2.check "$@"
+else
+    # Look for src/ relative to this script
+    for candidate in "$SCRIPT_DIR/../src" "$SCRIPT_DIR/src" "$(pwd)/src"; do
+        if [[ -f "$candidate/quali2/check.py" ]]; then
+            PYTHONPATH="$candidate" python3 -m quali2.check "$@"
+            exit $?
+        fi
+    done
+    echo "Error: quali2 not found. Install it:" >&2
+    echo "  pip install -e /path/to/quali" >&2
+    exit 1
+fi
