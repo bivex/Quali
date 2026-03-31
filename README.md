@@ -130,17 +130,7 @@ Hello, world!
 ```bash
 PYTHONPATH=src python -m quali2.check script.py    # pre-run gate
 PYTHONPATH=src python -m quali2 src/               # project analysis
-```
-
-# Version
-quali2 --version
-```
-
-Or run without installing:
-
-```bash
-source .venv/bin/activate
-PYTHONPATH=src python -m quali2 path/to/code.py
+PYTHONPATH=src python -m quali2 --version          # version
 ```
 
 ### Example output
