@@ -123,16 +123,11 @@ run_summary() {
         raw=$("${CMD[@]}" 2>&1)
     fi
 
-    # Print header + summary block
-    echo "$raw" | awk '
-        /^===.*Summary/ { printing=1 }
-        printing { print }
-    '
+    # Print summary block
+    echo "$raw" | awk '/^  Summary$/{p=1} p'
 
-    # Print individual smells
-    local smell_lines
-    smell_lines=$(echo "$raw" | grep -n "^\s*\[!" 2>/dev/null || true)
-    if [[ -n "$smell_lines" ]]; then
+    # Print smells if any
+    if echo "$raw" | grep -q "^\s*\[!"; then
         echo ""
         echo "Detected smells:"
         echo "$raw" | grep "^\s*\[" | sed 's/^/  /'
