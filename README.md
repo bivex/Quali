@@ -37,12 +37,40 @@ Two parser backends:
 
 ```bash
 git clone <repo-url> && cd quali2
+```
+
+### Option A: System-wide (recommended)
+
+Install `pythonq` and `quali` commands to `~/bin`:
+
+```bash
+# Create symlinks
+ln -sf "$(pwd)/pythonq" ~/bin/pythonq
+ln -sf "$(pwd)/quali.sh" ~/bin/quali
+
+# Add to shell (~/.bashrc or ~/.zshrc)
+echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc
+echo 'export PYTHONPATH="/path/to/quali/src:$PYTHONPATH"' >> ~/.zshrc
+
+# Reload shell
+source ~/.zshrc
+```
+
+Verify:
+```bash
+which pythonq   # → /Users/you/bin/pythonq
+which quali     # → /Users/you/bin/quali
+```
+
+### Option B: pip install
+
+```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
 ```
 
-No runtime dependencies — AST backend works out of the box with Python 3.10+.
+This adds `quali2` and `pythonq` to the virtualenv's bin.
 
 Optional ANTLR4 backend:
 ```bash
@@ -51,54 +79,58 @@ pip install -e ".[antlr]"
 
 ## Usage
 
-### Shell script (recommended)
+### `quali` — analyze a project
 
 ```bash
-# Analyze any project
-./quali.sh ~/myproject
+# Analyze any directory
+quali ~/myproject
 
 # Summary only
-./quali.sh src/ --summary
+quali src/ --summary
 
 # JSON to file
-./quali.sh . -f json -o report.json
+quali . -f json -o report.json
 
 # Quiet mode (no stderr)
-./quali.sh ~/django-app -s -q
+quali ~/django-app -s -q
 
-# Use ANTLR4 parser
-./quali.sh . -b antlr
+# ANTLR4 parser backend
+quali . -b antlr
 ```
 
-### Pre-run quality gate
+### `pythonq` — pre-run quality gate
 
-Run quali2 automatically before `python3`:
+Run any Python script with automatic smell detection before execution:
 
 ```bash
-# Method 1: python -m (cross-platform)
-PYTHONPATH=src python -m quali2.check script.py arg1 arg2
+# Shows smells, then runs the script
+pythonq script.py arg1 arg2
 
-# Method 2: shell wrapper
-./quali-run.sh script.py arg1 arg2
-
-# Method 3: shell alias (add to .bashrc / .zshrc)
-alias pythonq='PYTHONPATH=/path/to/quali/src python -m quali2.check'
-pythonq script.py
+# Works with any project, no install needed
+pythonq ~/myproject/main.py --verbose
 ```
 
-The checker prints smells, then executes the script regardless.
+Example:
+```
+$ pythonq hello.py
 
-### CLI
+────────────────────────────────────────
+  quali2: 2 smell(s) in hello.py
+────────────────────────────────────────
+  [! ] L  42  [Implementation] Magic Number
+        func: Magic number '42' — consider extracting to a named constant
+  [!!] L   7  [Implementation] Empty Catch Clause
+        <except>: Exception handler body is empty (pass or ...)
+
+Hello, world!
+```
+
+### Without installing
 
 ```bash
-# Analyze a directory (AST backend, default)
-quali2 src/
-
-# ANTLR4 backend
-quali2 src/ --backend antlr
-
-# JSON output
-quali2 src/ --format json
+PYTHONPATH=src python -m quali2.check script.py    # pre-run gate
+PYTHONPATH=src python -m quali2 src/               # project analysis
+```
 
 # Version
 quali2 --version
