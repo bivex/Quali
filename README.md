@@ -1,6 +1,10 @@
 # Quali2
 
-Python code quality assessment tool powered by ANTLR4. Detects architecture smells, design smells, implementation smells, and ML-specific code smells. Computes object-oriented metrics.
+Python code quality assessment tool. Detects architecture smells, design smells, implementation smells, and ML-specific code smells. Computes object-oriented metrics.
+
+Two parser backends:
+- **AST** (default) — uses Python's built-in `ast` module, zero dependencies
+- **ANTLR4** — optional, requires `antlr4-python3-runtime`
 
 ## Features
 
@@ -38,16 +42,42 @@ source .venv/bin/activate
 pip install -e .
 ```
 
-Requires Python 3.10+ and Java 17+ (for ANTLR4 grammar generation; not needed at runtime).
+No runtime dependencies — AST backend works out of the box with Python 3.10+.
+
+Optional ANTLR4 backend:
+```bash
+pip install -e ".[antlr]"
+```
 
 ## Usage
 
-```bash
-# Analyze a single file
-quali2 path/to/file.py
+### Shell script (recommended)
 
-# Analyze a directory (recursively)
+```bash
+# Analyze any project
+./quali.sh ~/myproject
+
+# Summary only
+./quali.sh src/ --summary
+
+# JSON to file
+./quali.sh . -f json -o report.json
+
+# Quiet mode (no stderr)
+./quali.sh ~/django-app -s -q
+
+# Use ANTLR4 parser
+./quali.sh . -b antlr
+```
+
+### CLI
+
+```bash
+# Analyze a directory (AST backend, default)
 quali2 src/
+
+# ANTLR4 backend
+quali2 src/ --backend antlr
 
 # JSON output
 quali2 src/ --format json
@@ -102,28 +132,42 @@ PYTHONPATH=src python -m quali2 path/to/code.py
 ```
 src/quali2/
 ├── domain/
-│   └── models.py              Value objects (Smell, Metric, enums, reports)
+│   ├── models.py              Value objects (Smell, Metric, enums, reports)
+│   └── analysis_types.py      Structural data (ClassInfo, MethodInfo, AnalysisData)
 ├── analysis/
 │   ├── engine.py              Orchestration: parse -> metrics -> detect -> report
-│   ├── visitor.py             ANTLR4 parse-tree visitor (structural extraction)
+│   ├── ast_visitor.py         AST-based visitor (stdlib, zero deps)
+│   ├── visitor.py             ANTLR4 parse-tree visitor (optional)
 │   └── metrics.py             OO metrics computation
 ├── detectors/
 │   ├── architecture.py        Architecture smells (incl. cross-file analysis)
 │   ├── design.py              Design smells
-│   ├── implementation.py      Implementation smells (incl. magic number via ANTLR4 tokens)
+│   ├── implementation.py      Implementation smells
+│   ├── ast_detectors.py       AST-based smell detectors (replaces token-stream)
 │   └── ml.py                  ML-specific smells
 ├── reporting.py               Text and JSON output formatters
 ├── cli.py                     CLI entry point
-└── antlr/                     ANTLR4-generated Python3 lexer/parser
+└── antlr/                     ANTLR4-generated Python3 lexer/parser (optional)
 ```
 
 Pipeline:
 
-1. **Parse** -- ANTLR4 lexer/parser converts Python source into a parse tree
-2. **Visit** -- `PythonAnalysisVisitor` walks the tree, extracting classes, methods, imports, fields, inheritance
+1. **Parse** -- AST (`ast.parse()`) or ANTLR4 lexer/parser converts Python source into a tree
+2. **Visit** -- Visitor walks the tree, extracting classes, methods, imports, fields, inheritance
 3. **Metrics** -- `compute_metrics()` calculates OO metrics from the extracted data
 4. **Detect** -- Four detector modules run per-file; cross-file detectors run on the full project
 5. **Report** -- `format_text()` or `format_json()` renders results
+
+### Backend comparison
+
+| | AST (default) | ANTLR4 |
+|---|---|---|
+| Dependencies | None (stdlib) | `antlr4-python3-runtime` |
+| Speed | ~0.15s (131 tests) | ~8.5s (131 tests) |
+| Output | Identical | Identical |
+| Grammar errors | `SyntaxError` | Token-level errors |
+
+Both backends produce the same smell and metric output for valid Python code.
 
 ## Detection Thresholds
 
@@ -154,13 +198,13 @@ Each detector uses configurable thresholds defined as module-level constants:
 | Long Lambda | > 5 lines | `LONG_LAMBDA_LINES` |
 | Long Message Chain | >= 4 dots | `LONG_MESSAGE_CHAIN_DOTS` |
 | Magic Number | non-whitelisted numeric literal | `WHITELISTED_NUMBERS` |
-| Missing Default | `match` without `case _` | (regex) |
+| Missing Default | `match` without `case _` | (AST/regex) |
 | Ambiguous Merge Key | `.merge()` without `on=` | (inline) |
-| Broken NaN Check | `x == np.nan` | (regex) |
-| Chain Indexing | `df["a"]["b"]` | (regex) |
-| Forward Bypass | `model.forward(x)` | (regex) |
+| Broken NaN Check | `x == np.nan` | (AST/regex) |
+| Chain Indexing | `df["a"]["b"]` | (AST/regex) |
+| Forward Bypass | `model.forward(x)` | (AST/regex) |
 | Type Blind Conversion | `.values` without `dtype` | (inline) |
-| Unnecessary Iteration | `.iterrows()` / `.itertuples()` | (regex) |
+| Unnecessary Iteration | `.iterrows()` / `.itertuples()` | (AST/regex) |
 
 ## Testing
 
@@ -240,7 +284,8 @@ PYTHONPATH=src pytest tests/ -v
 
 ## Dependencies
 
-- **Runtime**: `antlr4-python3-runtime` 4.13+
+- **Runtime**: none (AST backend uses Python stdlib `ast` module)
+- **Optional**: `antlr4-python3-runtime` 4.13+ for ANTLR backend (`pip install quali2[antlr]`)
 - **Build**: `hatchling`
 - **Dev**: `pytest`
 
