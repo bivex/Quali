@@ -70,6 +70,24 @@ pip install -e ".[antlr]"
 ./quali.sh . -b antlr
 ```
 
+### Pre-run quality gate
+
+Run quali2 automatically before `python3`:
+
+```bash
+# Method 1: python -m (cross-platform)
+PYTHONPATH=src python -m quali2.check script.py arg1 arg2
+
+# Method 2: shell wrapper
+./quali-run.sh script.py arg1 arg2
+
+# Method 3: shell alias (add to .bashrc / .zshrc)
+alias pythonq='PYTHONPATH=/path/to/quali/src python -m quali2.check'
+pythonq script.py
+```
+
+The checker prints smells, then executes the script regardless.
+
 ### CLI
 
 ```bash
