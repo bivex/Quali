@@ -13,7 +13,7 @@ Python code quality assessment tool powered by ANTLR4. Detects architecture smel
 | Implementation | 11 | Complex Conditional, Complex Method, Empty Catch Clause, Long Identifier, Long Method, Long Parameter List, Long Statement, Magic Number, Missing Default, Long Lambda, Long Message Chain |
 | ML | 6 | Ambiguous Merge Key, Broken NaN Check, Chain Indexing, Forward Bypass, Type Blind Conversion, Unnecessary Iteration |
 
-**12 OO metrics** per file/class/method:
+**11 OO metrics** per file/class/method:
 
 | Metric | Scope | Description |
 |---|---|---|
@@ -134,7 +134,7 @@ Each detector uses configurable thresholds defined as module-level constants:
 | God Component (LOC) | > 1000 lines | `GOD_COMPONENT_LOC` |
 | God Component (classes) | > 10 classes | `GOD_COMPONENT_CLASSES` |
 | Feature Concentration | > 10 import modules | `FEATURE_CONCENTRATION_IMPORT_MODULES` |
-| Dense Structure | avg > 10 attr accesses/method | `DENSE_STRUCTURE_DEP_RATIO` |
+| Dense Structure | avg > 10 attr accesses/method | `DENSE_STRUCTURE_AVG_ACCESSES` |
 | Unstable Dependency | instability I > 0.4 | `UNSTABLE_DEPENDENCY_THRESHOLD` |
 | Broken Modularization | 6+ shared local imports | `BROKEN_MODULARIZATION_SHARED_IMPORTS` |
 | Multifaceted Abstraction | > 15 methods | `MULTIFACETED_METHODS` |
@@ -171,7 +171,7 @@ PYTHONPATH=src pytest tests/ -v
 
 **131 tests**, all passing. Coverage matrix:
 
-### Architecture -- 8 tests
+### Architecture -- 13 tests
 
 | Detector | Test Class | +Case | -Case |
 |---|---|---|---|
@@ -196,7 +196,7 @@ PYTHONPATH=src pytest tests/ -v
 | Rebellious Hierarchy | `TestRebelliousHierarchy` / `TestRebelliousHierarchyNegative` | ✓ | ✓ |
 | Broken Hierarchy | `TestBrokenHierarchy` | ✓ | ✓ |
 
-### Implementation -- 42 tests
+### Implementation -- 41 tests
 
 | Detector | Test Class | +Case | -Case |
 |---|---|---|---|
@@ -223,7 +223,7 @@ PYTHONPATH=src pytest tests/ -v
 | Type Blind Conversion | `TestTypeBlindConversion` | ✓ | ✓ |
 | Unnecessary Iteration | `TestUnnecessaryIteration` | ✓, ✓ | ✓ |
 
-### Metrics, CLI, Infrastructure -- 49 tests
+### Metrics, CLI, Infrastructure -- 44 tests
 
 | Area | Test Class | Tests |
 |---|---|---|

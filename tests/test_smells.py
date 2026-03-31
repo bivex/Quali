@@ -199,25 +199,34 @@ class TestMultifacetedAbstraction:
 
 
 class TestFeatureEnvy:
-    """Method accesses many attrs but few belong to its own class."""
+    """Method accesses attrs not belonging to its own class."""
 
     def test_triggered(self):
         code = """\
-class Host:
-    x = 1
-    y = 2
-    z = 3
+class Processor:
+    def __init__(self):
+        self.x = 1
 
-class Guest:
-    a = 1
+    def compute(self):
+        return self.x + self.a + self.b + self.c + self.d
 
-    def grab(self):
-        return self.host.x + self.host.y + self.host.z + self.host.w + self.host.v
+    def transform(self):
+        return self.x + self.a + self.b + self.c + self.d
+
+    def validate(self):
+        return self.x + self.a + self.b + self.c + self.d
+
+    def convert(self):
+        return self.x + self.a + self.b + self.c + self.d
+
+    def reset(self):
+        return self.x + self.a + self.b + self.c + self.d
+
+    def extra(self):
+        return self.x + self.a + self.b + self.c + self.d
 """
         smells = _smells_of(code, "Feature Envy")
-        # Detection depends on attr access tracking; may or may not fire.
-        # At minimum the smell type is recognized by the pipeline.
-        assert isinstance(smells, list)
+        assert len(smells) >= 1
 
 
 class TestDeficientEncapsulation:

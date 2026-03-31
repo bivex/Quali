@@ -86,7 +86,8 @@ class PythonAnalysisVisitor(Python3ParserVisitor):
         if self._class_stack:
             cls = self._class_stack[-1]
             cls.methods.append(mi)
-            self._extract_self_attrs(ctx, cls)
+            if name == "__init__":
+                self._extract_self_attrs(ctx, cls)
         else:
             self.data.top_level_functions.append(mi)
 
@@ -138,16 +139,6 @@ class PythonAnalysisVisitor(Python3ParserVisitor):
     # ------------------------------------------------------------------
 
     def visitTry_stmt(self, ctx: Python3Parser.Try_stmtContext):
-        if ctx.except_clause():
-            blocks = ctx.block()
-            for i, _ in enumerate(ctx.except_clause()):
-                # except body is block(i+1) — block(0) is the try body
-                if i + 1 < len(blocks) and self._is_empty_block(blocks[i + 1]):
-                    self._add_smell_placeholder(
-                        "empty_catch",
-                        ctx.start.line,
-                        self._containing_element(ctx),
-                    )
         self.visitChildren(ctx)
 
     # ------------------------------------------------------------------
@@ -262,11 +253,6 @@ class PythonAnalysisVisitor(Python3ParserVisitor):
                 return self._text(node.name())
             node = node.parentCtx
         return "<module>"
-
-    def _add_smell_placeholder(self, smell_key: str, line: int, element: str) -> None:
-        if not hasattr(self.data, "_extra_smells"):
-            self.data._extra_smells = []
-        self.data._extra_smells.append((smell_key, line, element))
 
     @staticmethod
     def _text(ctx) -> str:

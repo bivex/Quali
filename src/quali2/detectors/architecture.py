@@ -16,7 +16,7 @@ from quali2.domain.models import AnalysisData, Smell, SmellType
 GOD_COMPONENT_LOC = 1000
 GOD_COMPONENT_CLASSES = 10
 FEATURE_CONCENTRATION_IMPORT_MODULES = 10
-DENSE_STRUCTURE_DEP_RATIO = 0.7
+DENSE_STRUCTURE_AVG_ACCESSES = 10
 UNSTABLE_DEPENDENCY_THRESHOLD = 0.4
 BROKEN_MODULARIZATION_SHARED_IMPORTS = 6
 
@@ -76,7 +76,7 @@ def detect_architecture_smells(
     total_methods = sum(len(cls.methods) for cls in data.classes)
     if total_methods > 0:
         ratio = total_internal_refs / total_methods
-        if ratio > 10 and total_methods > 5:
+        if ratio > DENSE_STRUCTURE_AVG_ACCESSES and total_methods > 5:
             smells.append(
                 Smell.create(
                     SmellType.DENSE_STRUCTURE,
