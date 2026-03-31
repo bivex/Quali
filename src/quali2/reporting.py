@@ -5,56 +5,73 @@ from __future__ import annotations
 import json
 from dataclasses import asdict
 
-from quali2.domain.models import Category, ProjectReport, Severity
+from quali2.domain.models import (
+    Category,
+    Metric,
+    ProjectReport,
+    Severity,
+    Smell,
+)
+
+_SEV_ICONS = {"High": "!!", "Medium": "! ", "Low": "i "}
+
+
+def _format_smell(s: Smell) -> list[str]:
+    icon = _SEV_ICONS.get(s.severity.value, "  ")
+    return [
+        f"    [{icon}] L{s.line:>4}  [{s.category.value}] {s.smell_type.value}",
+        f"          {s.element}: {s.message}",
+    ]
+
+
+def _sort_smells(smells: list[Smell]) -> list[Smell]:
+    return sorted(smells, key=lambda x: (x.category.value, x.line))
+
+
+def _format_file_section(fr) -> list[str]:
+    lines = [
+        f"\n{'=' * 72}",
+        f"  {fr.file_path}",
+        f"{'=' * 72}",
+    ]
+    if fr.smells:
+        lines.append(f"\n  Smells ({len(fr.smells)}):")
+        for s in _sort_smells(fr.smells):
+            lines.extend(_format_smell(s))
+    else:
+        lines.append("\n  Smells: none")
+    if fr.metrics:
+        lines.append("\n  Metrics:")
+        for m in fr.metrics:
+            lines.append(f"    {m.element:40s}  {m.name:6s} = {m.value}")
+    return lines
+
+
+def _format_summary(report: ProjectReport) -> list[str]:
+    lines = [
+        f"\n{'=' * 72}",
+        "  Summary",
+        f"{'=' * 72}",
+        f"  Files analyzed : {len(report.files)}",
+        f"  Total smells   : {report.total_smells}",
+        f"  Total metrics  : {report.total_metrics}",
+    ]
+    for sev in Severity:
+        count = len(report.smells_by_severity()[sev])
+        if count:
+            lines.append(f"    {sev.value:8s}: {count}")
+    for cat in Category:
+        count = len(report.smells_by_category()[cat])
+        if count:
+            lines.append(f"    {cat.value:14s}: {count}")
+    return lines
 
 
 def format_text(report: ProjectReport) -> str:
     lines: list[str] = []
-
     for fr in report.files:
-        lines.append(f"\n{'=' * 72}")
-        lines.append(f"  {fr.file_path}")
-        lines.append(f"{'=' * 72}")
-
-        # Smells
-        if fr.smells:
-            lines.append(f"\n  Smells ({len(fr.smells)}):")
-            for s in sorted(fr.smells, key=lambda x: (x.category.value, x.line)):
-                sev_icon = {"High": "!!", "Medium": "! ", "Low": "i "}
-                lines.append(
-                    f"    [{sev_icon.get(s.severity.value, '  ')}] "
-                    f"L{s.line:>4}  [{s.category.value}] {s.smell_type.value}"
-                )
-                lines.append(f"          {s.element}: {s.message}")
-        else:
-            lines.append("\n  Smells: none")
-
-        # Metrics summary
-        if fr.metrics:
-            lines.append(f"\n  Metrics:")
-            for m in fr.metrics:
-                lines.append(f"    {m.element:40s}  {m.name:6s} = {m.value}")
-
-    # Summary
-    lines.append(f"\n{'=' * 72}")
-    lines.append(f"  Summary")
-    lines.append(f"{'=' * 72}")
-    lines.append(f"  Files analyzed : {len(report.files)}")
-    lines.append(f"  Total smells   : {report.total_smells}")
-    lines.append(f"  Total metrics  : {report.total_metrics}")
-
-    by_sev = report.smells_by_severity()
-    for sev in Severity:
-        count = len(by_sev[sev])
-        if count:
-            lines.append(f"    {sev.value:8s}: {count}")
-
-    by_cat = report.smells_by_category()
-    for cat in Category:
-        count = len(by_cat[cat])
-        if count:
-            lines.append(f"    {cat.value:14s}: {count}")
-
+        lines.extend(_format_file_section(fr))
+    lines.extend(_format_summary(report))
     return "\n".join(lines)
 
 

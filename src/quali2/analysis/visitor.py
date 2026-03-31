@@ -19,12 +19,12 @@ class PythonAnalysisVisitor(Python3ParserVisitor):
     """Walks the ANTLR4 parse tree and populates an AnalysisData structure."""
 
     def __init__(self, file_path: str, source_lines: list[str]) -> None:
+        super().__init__()
         self.data = AnalysisData(file_path=file_path, total_lines=len(source_lines))
         self._source_lines = source_lines
         self._class_stack: list[ClassInfo] = []
         self._method_stack: list[MethodInfo] = []
         self._class_map: dict[str, ClassInfo] = {}
-        self._current_class_idx: int | None = None
 
     # ------------------------------------------------------------------
     # File
@@ -71,7 +71,9 @@ class PythonAnalysisVisitor(Python3ParserVisitor):
         line_start = ctx.start.line
         line_end = ctx.stop.line
         params_ctx = ctx.parameters().typedargslist() if ctx.parameters() else None
-        params = self._extract_params(params_ctx)
+        params = (
+            [self._text(t.name()) for t in params_ctx.tfpdef()] if params_ctx else []
+        )
         cc = self._calc_cyclomatic(ctx)
 
         mi = MethodInfo(
@@ -87,7 +89,10 @@ class PythonAnalysisVisitor(Python3ParserVisitor):
             cls = self._class_stack[-1]
             cls.methods.append(mi)
             if name == "__init__":
-                self._extract_self_attrs(ctx, cls)
+                refs: list[str] = []
+                self._collect_self_refs(ctx, refs)
+                for attr_name in set(refs):
+                    cls.fields.add(attr_name)
         else:
             self.data.top_level_functions.append(mi)
 
@@ -157,19 +162,6 @@ class PythonAnalysisVisitor(Python3ParserVisitor):
     # Helpers
     # ------------------------------------------------------------------
 
-    def _extract_params(self, tal_ctx) -> list[str]:
-        if tal_ctx is None:
-            return []
-        params: list[str] = []
-        for t in tal_ctx.tfpdef():
-            params.append(self._text(t.name()))
-        return params
-
-    def _extract_self_attrs(self, func_ctx, cls: ClassInfo) -> None:
-        attr_refs = self._find_self_attr_refs(func_ctx)
-        for attr_name in attr_refs:
-            cls.fields.add(attr_name)
-
     def _collect_attr_accesses(self, ctx: ParserRuleContext) -> None:
         if not self._method_stack:
             return
@@ -179,11 +171,6 @@ class PythonAnalysisVisitor(Python3ParserVisitor):
             if len(parts) > 1 and parts[0] == "self":
                 attr = parts[1].split("(")[0].split("[")[0]
                 self._method_stack[-1].accesses_attrs.add(attr)
-
-    def _find_self_attr_refs(self, ctx: ParserRuleContext) -> set[str]:
-        refs: list[str] = []
-        self._collect_self_refs(ctx, refs)
-        return set(refs)
 
     def _collect_self_refs(self, ctx: ParserRuleContext, refs: list[str]) -> None:
         text = self._text(ctx)
@@ -237,22 +224,6 @@ class PythonAnalysisVisitor(Python3ParserVisitor):
             if isinstance(child, ParserRuleContext):
                 count += self._count_nodes(child, node_types)
         return count
-
-    def _is_empty_block(self, block_ctx) -> bool:
-        text = self._text(block_ctx).strip()
-        if not text or text in ("pass", "..."):
-            return True
-        return False
-
-    def _containing_element(self, ctx: ParserRuleContext) -> str:
-        node = ctx.parentCtx
-        while node is not None:
-            if isinstance(node, Python3Parser.FuncdefContext):
-                return self._text(node.name())
-            if isinstance(node, Python3Parser.ClassdefContext):
-                return self._text(node.name())
-            node = node.parentCtx
-        return "<module>"
 
     @staticmethod
     def _text(ctx) -> str:

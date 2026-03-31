@@ -31,9 +31,17 @@ def detect_architecture_smells(
     all_data: list[AnalysisData] | None = None,
 ) -> list[Smell]:
     smells: list[Smell] = []
-    fp = data.file_path
+    smells.extend(_detect_god_component(data))
+    smells.extend(_detect_feature_concentration(data))
+    smells.extend(_detect_dense_structure(data))
+    if all_data is not None:
+        smells.extend(_detect_unstable_dependency(data, all_data))
+    return smells
 
-    # God Component — file is excessively large
+
+def _detect_god_component(data: AnalysisData) -> list[Smell]:
+    smells: list[Smell] = []
+    fp = data.file_path
     if data.total_lines > GOD_COMPONENT_LOC:
         smells.append(
             Smell.create(
@@ -44,7 +52,6 @@ def detect_architecture_smells(
                 f"File has {data.total_lines} lines (threshold {GOD_COMPONENT_LOC})",
             )
         )
-
     if len(data.classes) > GOD_COMPONENT_CLASSES:
         smells.append(
             Smell.create(
@@ -55,11 +62,14 @@ def detect_architecture_smells(
                 f"File contains {len(data.classes)} classes (threshold {GOD_COMPONENT_CLASSES})",
             )
         )
+    return smells
 
-    # Feature Concentration — file imports many unrelated modules
+
+def _detect_feature_concentration(data: AnalysisData) -> list[Smell]:
+    fp = data.file_path
     modules = {imp.module.split(".")[0] for imp in data.imports}
     if len(modules) > FEATURE_CONCENTRATION_IMPORT_MODULES:
-        smells.append(
+        return [
             Smell.create(
                 SmellType.FEATURE_CONCENTRATION,
                 fp,
@@ -67,17 +77,18 @@ def detect_architecture_smells(
                 "<file>",
                 f"File imports {len(modules)} distinct modules (threshold {FEATURE_CONCENTRATION_IMPORT_MODULES})",
             )
-        )
+        ]
+    return []
 
-    # Dense Structure — excessive intra-module dependencies
-    total_internal_refs = sum(
-        len(m.accesses_attrs) for cls in data.classes for m in cls.methods
-    )
+
+def _detect_dense_structure(data: AnalysisData) -> list[Smell]:
+    fp = data.file_path
+    total_refs = sum(len(m.accesses_attrs) for cls in data.classes for m in cls.methods)
     total_methods = sum(len(cls.methods) for cls in data.classes)
     if total_methods > 0:
-        ratio = total_internal_refs / total_methods
+        ratio = total_refs / total_methods
         if ratio > DENSE_STRUCTURE_AVG_ACCESSES and total_methods > 5:
-            smells.append(
+            return [
                 Smell.create(
                     SmellType.DENSE_STRUCTURE,
                     fp,
@@ -85,13 +96,8 @@ def detect_architecture_smells(
                     "<file>",
                     f"Average {ratio:.1f} attribute accesses per method indicates dense coupling",
                 )
-            )
-
-    # Unstable Dependency (needs cross-file context)
-    if all_data is not None:
-        smells.extend(_detect_unstable_dependency(data, all_data))
-
-    return smells
+            ]
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -105,12 +111,9 @@ def detect_cross_file_smells(all_data: list[AnalysisData]) -> list[Smell]:
     Returns smells for Unstable Dependency and Broken Modularization.
     """
     smells: list[Smell] = []
-
     for data in all_data:
         smells.extend(_detect_unstable_dependency(data, all_data))
-
     smells.extend(_detect_broken_modularization(all_data))
-
     return smells
 
 
@@ -119,57 +122,46 @@ def detect_cross_file_smells(all_data: list[AnalysisData]) -> list[Smell]:
 # ---------------------------------------------------------------------------
 
 
-def _detect_unstable_dependency(
-    data: AnalysisData, all_data: list[AnalysisData]
-) -> list[Smell]:
-    """Detect when a file depends on modules that are highly unstable.
-
-    Instability I = fan_out / (fan_in + fan_out).
-    I=0 → maximally stable, I=1 → maximally unstable.
-
-    A smell fires when the file's *dependencies* have I > threshold,
-    meaning the file leans on unstable foundations.
-    """
-    smells: list[Smell] = []
-    fp = data.file_path
-
-    # Build module → file mapping
-    file_modules: dict[str, AnalysisData] = {}
-    for d in all_data:
-        mod = _file_to_module(d.file_path)
-        file_modules[mod] = d
-
-    # Build dependency graph
-    dep_graph = _build_dependency_graph(all_data, file_modules)
-
-    # Compute instability for each module
+def _compute_instability(dep_graph: dict[str, set[str]]) -> dict[str, float]:
     instability: dict[str, float] = {}
     for mod, deps in dep_graph.items():
         fan_out = len(deps)
         fan_in = sum(1 for m, ds in dep_graph.items() if mod in ds)
         total = fan_in + fan_out
         instability[mod] = fan_out / total if total > 0 else 0.0
+    return instability
+
+
+def _detect_unstable_dependency(
+    data: AnalysisData, all_data: list[AnalysisData]
+) -> list[Smell]:
+    fp = data.file_path
+
+    file_modules: dict[str, AnalysisData] = {}
+    for d in all_data:
+        file_modules[_file_to_module(d.file_path)] = d
+
+    dep_graph = _build_dependency_graph(all_data, file_modules)
+    instability = _compute_instability(dep_graph)
 
     my_mod = _file_to_module(fp)
     my_deps = dep_graph.get(my_mod, set())
-
-    # Check if any dependency is unstable
     unstable_deps = [
         d for d in my_deps if instability.get(d, 0.0) > UNSTABLE_DEPENDENCY_THRESHOLD
     ]
-    if unstable_deps:
-        dep_list = ", ".join(sorted(unstable_deps))
-        smells.append(
-            Smell.create(
-                SmellType.UNSTABLE_DEPENDENCY,
-                fp,
-                1,
-                "<file>",
-                f"Depends on unstable modules (I>{UNSTABLE_DEPENDENCY_THRESHOLD}): {dep_list}",
-            )
-        )
+    if not unstable_deps:
+        return []
 
-    return smells
+    dep_list = ", ".join(sorted(unstable_deps))
+    return [
+        Smell.create(
+            SmellType.UNSTABLE_DEPENDENCY,
+            fp,
+            1,
+            "<file>",
+            f"Depends on unstable modules (I>{UNSTABLE_DEPENDENCY_THRESHOLD}): {dep_list}",
+        )
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -178,56 +170,62 @@ def _detect_unstable_dependency(
 
 
 def _detect_broken_modularization(all_data: list[AnalysisData]) -> list[Smell]:
-    """Detect when related responsibilities are scattered across files.
-
-    Heuristic: two files that import the same local modules and define
-    related classes/functions share a concern that should be co-located.
-    """
-    smells: list[Smell] = []
-
     if len(all_data) < 2:
-        return smells
+        return []
 
-    # Build module → file mapping
     file_modules: dict[str, AnalysisData] = {}
     for d in all_data:
-        mod = _file_to_module(d.file_path)
-        file_modules[mod] = d
+        file_modules[_file_to_module(d.file_path)] = d
 
-    # For each file, collect the set of imported *local* modules
-    local_imports: dict[str, set[str]] = {}
-    for d in all_data:
-        mod = _file_to_module(d.file_path)
-        local_imports[mod] = {
-            _normalize_import(imp.module)
-            for imp in d.imports
-            if _is_local_import(imp.module, file_modules)
-        }
+    local_imports = _collect_local_imports(all_data, file_modules)
+    return _find_shared_import_smells(local_imports, file_modules)
 
-    # For each pair of files, check if they share many local imports
+
+def _find_shared_import_smells(
+    local_imports: dict[str, set[str]],
+    file_modules: dict[str, AnalysisData],
+) -> list[Smell]:
+    smells: list[Smell] = []
     modules = list(local_imports.keys())
     for i in range(len(modules)):
         for j in range(i + 1, len(modules)):
             ma, mb = modules[i], modules[j]
             shared = local_imports[ma] & local_imports[mb]
             if len(shared) >= BROKEN_MODULARIZATION_SHARED_IMPORTS:
-                # Both files depend on the same local modules → potential split
-                shared_list = ", ".join(sorted(shared))
-                # Report on the smaller file (less cohesive)
-                data_a = file_modules[ma]
-                data_b = file_modules[mb]
-                target = data_a if data_a.total_lines <= data_b.total_lines else data_b
                 smells.append(
-                    Smell.create(
-                        SmellType.BROKEN_MODULARIZATION,
-                        target.file_path,
-                        1,
-                        "<file>",
-                        f"Shares {len(shared)} local imports with {_file_to_module(data_b.file_path if target is data_a else data_a.file_path)}: {shared_list}",
-                    )
+                    _make_broken_mod_smell(shared, file_modules[ma], file_modules[mb])
                 )
-
     return smells
+
+
+def _make_broken_mod_smell(
+    shared: set[str], data_a: AnalysisData, data_b: AnalysisData
+) -> Smell:
+    shared_list = ", ".join(sorted(shared))
+    target = data_a if data_a.total_lines <= data_b.total_lines else data_b
+    other = data_b if target is data_a else data_a
+    return Smell.create(
+        SmellType.BROKEN_MODULARIZATION,
+        target.file_path,
+        1,
+        "<file>",
+        f"Shares {len(shared)} local imports with {_file_to_module(other.file_path)}: {shared_list}",
+    )
+
+
+def _collect_local_imports(
+    all_data: list[AnalysisData],
+    file_modules: dict[str, AnalysisData],
+) -> dict[str, set[str]]:
+    result: dict[str, set[str]] = {}
+    for d in all_data:
+        mod = _file_to_module(d.file_path)
+        result[mod] = {
+            _normalize_import(imp.module)
+            for imp in d.imports
+            if _is_local_import(imp.module, file_modules)
+        }
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -237,8 +235,7 @@ def _detect_broken_modularization(all_data: list[AnalysisData]) -> list[Smell]:
 
 def _file_to_module(file_path: str) -> str:
     """Convert a file path to a dotted module name."""
-    base = os.path.splitext(os.path.basename(file_path))[0]
-    return base
+    return os.path.splitext(os.path.basename(file_path))[0]
 
 
 def _normalize_import(module: str) -> str:
@@ -248,8 +245,7 @@ def _normalize_import(module: str) -> str:
 
 def _is_local_import(module: str, file_modules: dict[str, AnalysisData]) -> bool:
     """Check if an import refers to another file in the project."""
-    top = _normalize_import(module)
-    return top in file_modules
+    return _normalize_import(module) in file_modules
 
 
 def _build_dependency_graph(
