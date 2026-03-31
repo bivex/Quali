@@ -125,24 +125,46 @@ def _is_nan_token(tokens: list, j: int, n: int) -> bool:
     nt = tokens[j]
     if nt.type == Python3Lexer.NAME and nt.text in ("nan", "NaN"):
         return True
-    if (
-        nt.type == Python3Lexer.NAME
-        and j + 2 < n
-        and tokens[j + 1].type == Python3Lexer.DOT
-        and tokens[j + 2].type == Python3Lexer.NAME
-        and tokens[j + 2].text == "nan"
-    ):
+    if _is_dotted_nan(tokens, j, n):
         return True
-    if (
-        nt.type == Python3Lexer.NAME
-        and nt.text == "float"
-        and j + 3 < n
-        and tokens[j + 1].type == Python3Lexer.OPEN_PAREN
-        and tokens[j + 2].type == Python3Lexer.STRING
-        and "nan" in tokens[j + 2].text.lower()
-    ):
+    if _is_float_nan(tokens, j, n):
         return True
     return False
+
+
+def _is_dotted_nan(tokens: list, j: int, n: int) -> bool:
+    nt = tokens[j]
+    if nt.type != Python3Lexer.NAME or j + 2 >= n:
+        return False
+    return (
+        tokens[j + 1].type == Python3Lexer.DOT
+        and tokens[j + 2].type == Python3Lexer.NAME
+        and tokens[j + 2].text == "nan"
+    )
+
+
+def _is_float_nan(tokens: list, j: int, n: int) -> bool:
+    nt = tokens[j]
+    if nt.type != Python3Lexer.NAME or nt.text != "float" or j + 3 >= n:
+        return False
+    return (
+        tokens[j + 1].type == Python3Lexer.OPEN_PAREN
+        and tokens[j + 2].type == Python3Lexer.STRING
+        and "nan" in tokens[j + 2].text.lower()
+    )
+
+
+def _is_chain_index(tokens: list, i: int, n: int) -> bool:
+    if i + 5 >= n:
+        return False
+    return (
+        tokens[i].type == Python3Lexer.NAME
+        and tokens[i + 1].type == Python3Lexer.OPEN_BRACK
+        and tokens[i + 2].type == Python3Lexer.STRING
+        and tokens[i + 3].type == Python3Lexer.CLOSE_BRACK
+        and tokens[i + 4].type == Python3Lexer.OPEN_BRACK
+        and tokens[i + 5].type == Python3Lexer.STRING
+    )
 
 
 def _detect_chain_indexing(fp: str, tokens: list) -> list[Smell]:
@@ -150,27 +172,33 @@ def _detect_chain_indexing(fp: str, tokens: list) -> list[Smell]:
     n = len(tokens)
     seen_lines: set[int] = set()
     for i in range(n - 5):
-        if (
-            tokens[i].type == Python3Lexer.NAME
-            and tokens[i + 1].type == Python3Lexer.OPEN_BRACK
-            and tokens[i + 2].type == Python3Lexer.STRING
-            and tokens[i + 3].type == Python3Lexer.CLOSE_BRACK
-            and tokens[i + 4].type == Python3Lexer.OPEN_BRACK
-            and tokens[i + 5].type == Python3Lexer.STRING
-        ):
-            line = tokens[i].line
-            if line not in seen_lines:
-                seen_lines.add(line)
-                smells.append(
-                    Smell.create(
-                        SmellType.CHAIN_INDEXING,
-                        fp,
-                        line,
-                        "<line>",
-                        f"Chained indexing on DataFrame: {tokens[i].text}[...][...] — use .loc[] instead",
-                    )
+        if not _is_chain_index(tokens, i, n):
+            continue
+        line = tokens[i].line
+        if line not in seen_lines:
+            seen_lines.add(line)
+            smells.append(
+                Smell.create(
+                    SmellType.CHAIN_INDEXING,
+                    fp,
+                    line,
+                    "<line>",
+                    f"Chained indexing on DataFrame: {tokens[i].text}[...][...] — use .loc[] instead",
                 )
+            )
     return smells
+
+
+def _is_iter_call(tokens: list, k: int, n: int, iter_methods: frozenset) -> bool:
+    if k + 3 >= n:
+        return False
+    return (
+        tokens[k].type == Python3Lexer.NAME
+        and tokens[k + 1].type == Python3Lexer.DOT
+        and tokens[k + 2].type == Python3Lexer.NAME
+        and tokens[k + 2].text in iter_methods
+        and tokens[k + 3].type == Python3Lexer.OPEN_PAREN
+    )
 
 
 def _detect_unnecessary_iteration(fp: str, tokens: list) -> list[Smell]:
@@ -187,26 +215,31 @@ def _detect_unnecessary_iteration(fp: str, tokens: list) -> list[Smell]:
         if j >= n:
             continue
         k = j + 1
-        if (
-            k + 3 < n
-            and tokens[k].type == Python3Lexer.NAME
-            and tokens[k + 1].type == Python3Lexer.DOT
-            and tokens[k + 2].type == Python3Lexer.NAME
-            and tokens[k + 2].text in iter_methods
-            and tokens[k + 3].type == Python3Lexer.OPEN_PAREN
-        ):
-            line = tok.line
-            seen_lines.add(line)
-            smells.append(
-                Smell.create(
-                    SmellType.UNNECESSARY_ITERATION,
-                    fp,
-                    line,
-                    "<line>",
-                    f"Iterating over DataFrame '{tokens[k].text}' — prefer vectorized operations",
-                )
+        if not _is_iter_call(tokens, k, n, iter_methods):
+            continue
+        seen_lines.add(tok.line)
+        smells.append(
+            Smell.create(
+                SmellType.UNNECESSARY_ITERATION,
+                fp,
+                tok.line,
+                "<line>",
+                f"Iterating over DataFrame '{tokens[k].text}' — prefer vectorized operations",
             )
+        )
     return smells
+
+
+def _is_forward_call(tokens: list, i: int, n: int) -> bool:
+    if i + 3 >= n:
+        return False
+    return (
+        tokens[i].type == Python3Lexer.NAME
+        and tokens[i + 1].type == Python3Lexer.DOT
+        and tokens[i + 2].type == Python3Lexer.NAME
+        and tokens[i + 2].text == "forward"
+        and tokens[i + 3].type == Python3Lexer.OPEN_PAREN
+    )
 
 
 def _detect_forward_bypass(fp: str, tokens: list) -> list[Smell]:
@@ -214,23 +247,19 @@ def _detect_forward_bypass(fp: str, tokens: list) -> list[Smell]:
     n = len(tokens)
     seen_lines: set[int] = set()
     for i in range(n - 3):
-        if (
-            tokens[i].type == Python3Lexer.NAME
-            and tokens[i + 1].type == Python3Lexer.DOT
-            and tokens[i + 2].type == Python3Lexer.NAME
-            and tokens[i + 2].text == "forward"
-            and tokens[i + 3].type == Python3Lexer.OPEN_PAREN
-        ):
-            line = tokens[i].line
-            if line not in seen_lines:
-                seen_lines.add(line)
-                smells.append(
-                    Smell.create(
-                        SmellType.FORWARD_BYPASS,
-                        fp,
-                        line,
-                        "<line>",
-                        f"Calling .forward() directly on '{tokens[i].text}' — use model(input) instead to trigger hooks and autocast",
-                    )
+        if not _is_forward_call(tokens, i, n):
+            continue
+        line = tokens[i].line
+        if line not in seen_lines:
+            seen_lines.add(line)
+            smells.append(
+                Smell.create(
+                    SmellType.FORWARD_BYPASS,
+                    fp,
+                    line,
+                    "<line>",
+                    f"Calling .forward() directly on '{tokens[i].text}' — use model(input) instead",
                 )
+            )
+    return smells
     return smells

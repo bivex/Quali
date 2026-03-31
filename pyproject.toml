@@ -9,9 +9,10 @@ description = "Python code quality assessment tool — architecture smells, desi
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
-dependencies = [
-    "antlr4-python3-runtime>=4.13,<5",
-]
+dependencies = []
+
+[project.optional-dependencies]
+antlr = ["antlr4-python3-runtime>=4.13,<5"]
 
 [project.scripts]
 quali2 = "quali2.cli:main"

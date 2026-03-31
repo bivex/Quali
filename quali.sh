@@ -17,6 +17,7 @@ Usage: quali.sh <path> [options]
 
 Options:
   -f, --format <text|json>   Output format (default: text)
+  -b, --backend <ast|antlr>  Parser backend (default: ast)
   -o, --output <file>        Save output to file
   -s, --summary              Show only summary (smells + counts)
   -q, --quiet                Suppress stderr (ANTLR warnings)
@@ -27,6 +28,7 @@ Examples:
   ./quali.sh src/ --summary
   ./quali.sh . -f json -o report.json
   ./quali.sh ~/django-app -s -q
+  ./quali.sh . -b antlr       # use ANTLR4 parser (requires antlr4-python3-runtime)
 EOF
     exit 0
 }
@@ -35,6 +37,7 @@ EOF
 
 TARGET=""
 FORMAT="text"
+BACKEND="ast"
 OUTPUT=""
 SUMMARY=false
 QUIET=false
@@ -43,6 +46,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         -h|--help)    usage ;;
         -f|--format)  FORMAT="$2"; shift 2 ;;
+        -b|--backend) BACKEND="$2"; shift 2 ;;
         -o|--output)  OUTPUT="$2"; shift 2 ;;
         -s|--summary) SUMMARY=true; shift ;;
         -q|--quiet)   QUIET=true; shift ;;
@@ -78,16 +82,21 @@ fi
 # ── Check dependencies ─────────────────────────────────────────────────────
 
 if ! "$PYTHON" -c "import quali2" 2>/dev/null; then
-    if ! "$PYTHON" -c "import antlr4" 2>/dev/null; then
-        echo "Error: antlr4-python3-runtime not installed" >&2
-        echo "  pip install antlr4-python3-runtime>=4.13" >&2
-        exit 1
-    fi
+    echo "Error: quali2 not importable" >&2
+    echo "  cd ${SCRIPT_DIR} && pip install -e ." >&2
+    exit 1
+fi
+
+if [[ "$BACKEND" == "antlr" ]] && ! "$PYTHON" -c "import antlr4" 2>/dev/null; then
+    echo "Error: antlr4-python3-runtime not installed" >&2
+    echo "  pip install 'antlr4-python3-runtime>=4.13'" >&2
+    echo "  or use: ./quali.sh ... -b ast" >&2
+    exit 1
 fi
 
 # ── Build command ──────────────────────────────────────────────────────────
 
-CMD=("$PYTHON" -m quali2 "$TARGET")
+CMD=("$PYTHON" -m quali2 "$TARGET" --backend "$BACKEND")
 
 if [[ "$FORMAT" == "json" ]]; then
     CMD+=(--format json)

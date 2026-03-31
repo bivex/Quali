@@ -23,6 +23,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output format (default: text)",
     )
     parser.add_argument(
+        "--backend",
+        "-b",
+        choices=["ast", "antlr"],
+        default="ast",
+        help="Parser backend: 'ast' (stdlib, default) or 'antlr' (requires antlr4-python3-runtime)",
+    )
+    parser.add_argument(
         "--version",
         "-V",
         action="version",
@@ -36,7 +43,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     try:
-        report = analyze_project(args.path)
+        report = analyze_project(args.path, backend=args.backend)
     except FileNotFoundError:
         print(f"Error: path '{args.path}' not found", file=sys.stderr)
         sys.exit(1)
