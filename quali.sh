@@ -8,8 +8,11 @@ set -euo pipefail
 #   ./quali.sh <path> -o report.json # save JSON to file
 #   ./quali.sh <path> --summary      # summary only
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export PYTHONPATH="${SCRIPT_DIR}/src"
+# Resolve symlink
+SELF="${BASH_SOURCE[0]}"
+while [[ -L "$SELF" ]]; do SELF="$(readlink "$SELF")"; done
+SCRIPT_DIR="$(cd "$(dirname "$SELF")" && pwd)"
+export PYTHONPATH="${SCRIPT_DIR}/src${PYTHONPATH:+:$PYTHONPATH}"
 
 usage() {
     cat <<'EOF'
