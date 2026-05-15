@@ -56,6 +56,17 @@ class SmellType(str, Enum):
     MISSING_DEFAULT = "Missing Default"
     LONG_LAMBDA_FUNCTION = "Long Lambda Function"
     LONG_MESSAGE_CHAIN = "Long Message Chain"
+    # Fowler Refactoring Smells
+    SWITCH_STATEMENTS = "Switch Statements"
+    DATA_CLUMPS = "Data Clumps"
+    PRIMITIVE_OBSESSION = "Primitive Obsession"
+    MIDDLE_MAN = "Middle Man"
+    SPECULATIVE_GENERALITY = "Speculative Generality"
+    DIVERGENT_CHANGE = "Divergent Change"
+    SHOTGUN_SURGERY = "Shotgun Surgery"
+    TEMPORARY_FIELD = "Temporary Field"
+    REFUSED_BEQUEST = "Refused Bequest"
+    COMMENT_DENSITY = "Comment Density"
     # ML
     AMBIGUOUS_MERGE_KEY = "Ambiguous Merge Key"
     BROKEN_NAN_CHECK = "Broken NaN Check"
@@ -91,6 +102,18 @@ _SMELL_META: dict[SmellType, tuple[Category, Severity]] = {
     SmellType.MISSING_DEFAULT: (Category.IMPLEMENTATION, Severity.MEDIUM),
     SmellType.LONG_LAMBDA_FUNCTION: (Category.IMPLEMENTATION, Severity.MEDIUM),
     SmellType.LONG_MESSAGE_CHAIN: (Category.IMPLEMENTATION, Severity.MEDIUM),
+    # Fowler
+    SmellType.SWITCH_STATEMENTS: (Category.DESIGN, Severity.MEDIUM),
+    SmellType.DATA_CLUMPS: (Category.DESIGN, Severity.MEDIUM),
+    SmellType.PRIMITIVE_OBSESSION: (Category.DESIGN, Severity.MEDIUM),
+    SmellType.MIDDLE_MAN: (Category.DESIGN, Severity.MEDIUM),
+    SmellType.SPECULATIVE_GENERALITY: (Category.DESIGN, Severity.LOW),
+    SmellType.DIVERGENT_CHANGE: (Category.DESIGN, Severity.MEDIUM),
+    SmellType.SHOTGUN_SURGERY: (Category.DESIGN, Severity.MEDIUM),
+    SmellType.TEMPORARY_FIELD: (Category.DESIGN, Severity.MEDIUM),
+    SmellType.REFUSED_BEQUEST: (Category.DESIGN, Severity.MEDIUM),
+    SmellType.COMMENT_DENSITY: (Category.IMPLEMENTATION, Severity.LOW),
+    # ML
     SmellType.AMBIGUOUS_MERGE_KEY: (Category.ML, Severity.HIGH),
     SmellType.BROKEN_NAN_CHECK: (Category.ML, Severity.HIGH),
     SmellType.CHAIN_INDEXING: (Category.ML, Severity.HIGH),

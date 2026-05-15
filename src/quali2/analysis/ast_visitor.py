@@ -115,11 +115,7 @@ class AstCodeVisitor(ast.NodeVisitor):
     # ------------------------------------------------------------------
 
     def visit_Attribute(self, node: ast.Attribute) -> None:
-        if (
-            self._method_stack
-            and isinstance(node.value, ast.Name)
-            and node.value.id == "self"
-        ):
+        if self._method_stack:
             self._method_stack[-1].accesses_attrs.add(node.attr)
         self.generic_visit(node)
 

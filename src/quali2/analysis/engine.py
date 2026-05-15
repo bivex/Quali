@@ -68,12 +68,15 @@ def _parse_ast(file_path: str) -> tuple[AnalysisData, str, ast.AST | None]:
 
 def _analyze_ast(data: AnalysisData, source: str, tree: ast.AST | None) -> list[Smell]:
     """Run detectors using AST backend."""
+    from quali2.detectors.fowler import detect_fowler_smells
+
     smells: list[Smell] = []
     smells.extend(detect_architecture_smells(data))
     smells.extend(detect_design_smells(data, source))
     if tree is not None:
         smells.extend(_impl_smells_ast(data, source, tree))
         smells.extend(_ml_smells_ast(data, source, tree))
+        smells.extend(detect_fowler_smells(data, tree, source))
     else:
         # Fallback: line-based only
         smells.extend(_impl_smells_lines(data.file_path, source))

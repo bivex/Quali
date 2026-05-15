@@ -8,13 +8,13 @@ Two parser backends:
 
 ## Features
 
-**30 smell detectors** across four categories:
+**40 smell detectors** across four categories:
 
 | Category | Count | Smells |
 |---|---|---|
 | Architecture | 4 | God Component, Feature Concentration, Dense Structure, Unstable Dependency |
-| Design | 10 | Multifaceted Abstraction, Feature Envy, Deficient Encapsulation, Insufficient/Broken/Hub-like Modularization, Wide/Deep/Rebellious/Broken Hierarchy |
-| Implementation | 11 | Complex Conditional, Complex Method, Empty Catch Clause, Long Identifier, Long Method, Long Parameter List, Long Statement, Magic Number, Missing Default, Long Lambda, Long Message Chain |
+| Design | 18 | Multifaceted Abstraction, Feature Envy, Deficient Encapsulation, Insufficient/Broken/Hub-like Modularization, Wide/Deep/Rebellious/Broken Hierarchy, **Switch Statements, Data Clumps, Primitive Obsession, Middle Man, Speculative Generality, Divergent Change, Shotgun Surgery, Temporary Field, Refused Bequest** |
+| Implementation | 12 | Complex Conditional, Complex Method, Empty Catch Clause, Long Identifier, Long Method, Long Parameter List, Long Statement, Magic Number, Missing Default, Long Lambda, Long Message Chain, **Comment Density** |
 | ML | 6 | Ambiguous Merge Key, Broken NaN Check, Chain Indexing, Forward Bypass, Type Blind Conversion, Unnecessary Iteration |
 
 **11 OO metrics** per file/class/method:
@@ -184,6 +184,7 @@ src/quali2/
 │   ├── design.py              Design smells
 │   ├── implementation.py      Implementation smells
 │   ├── ast_detectors.py       AST-based smell detectors (replaces token-stream)
+│   ├── fowler.py              Fowler's Refactoring code smells
 │   └── ml.py                  ML-specific smells
 ├── reporting.py               Text and JSON output formatters
 ├── cli.py                     CLI entry point

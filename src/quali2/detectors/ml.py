@@ -6,9 +6,14 @@ Forward Bypass, Type Blind Conversion, Unnecessary Iteration.
 
 from __future__ import annotations
 
-from antlr4 import CommonTokenStream, InputStream
+try:
+    from antlr4 import CommonTokenStream, InputStream
+    from quali2.antlr.Python3Lexer import Python3Lexer
+except ImportError:
+    CommonTokenStream = object
+    InputStream = object
+    Python3Lexer = None
 
-from quali2.antlr.Python3Lexer import Python3Lexer
 from quali2.domain.models import AnalysisData, Smell, SmellType
 
 
