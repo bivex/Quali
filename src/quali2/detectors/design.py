@@ -15,6 +15,10 @@ HUB_LIKE_FAN = 15
 WIDE_HIERARCHY_CHILDREN = 10
 DEEP_HIERARCHY_DEPTH = 5
 FEATURE_ENVY_OWN_RATIO = 0.3
+FEATURE_ENVY_MIN_ACCESSES = 3
+MAX_PUBLIC_FIELDS = 5
+REBELLIOUS_HIERARCHY_OVERRIDE_THRESHOLD = 5
+REBELLIOUS_HIERARCHY_MIN_FIELDS = 2
 
 
 def detect_design_smells(data: AnalysisData, source: str = "") -> list[Smell]:
@@ -22,7 +26,6 @@ def detect_design_smells(data: AnalysisData, source: str = "") -> list[Smell]:
     fp = data.file_path
 
     for cls in data.classes:
-        elem = f"class {cls.name}"
         smells.extend(_check_class_smells(fp, cls))
 
     smells.extend(_check_wide_hierarchy(fp, data.classes))
@@ -102,7 +105,7 @@ def _check_inheritance(fp: str, cls, elem: str) -> list[Smell]:
 
 def _check_class_encapsulation(fp: str, cls, elem: str) -> list[Smell]:
     public_fields = [f for f in cls.fields if not f.startswith("_")]
-    if len(public_fields) > 5:
+    if len(public_fields) > MAX_PUBLIC_FIELDS:
         return [
             Smell.create(
                 SmellType.DEFICIENT_ENCAPSULATION,
@@ -121,7 +124,7 @@ def _check_feature_envy(fp: str, cls) -> list[Smell]:
     for m in cls.methods:
         own_accesses = m.accesses_attrs & own_attrs
         if (
-            len(m.accesses_attrs) > 3
+            len(m.accesses_attrs) > FEATURE_ENVY_MIN_ACCESSES
             and len(own_accesses) < len(m.accesses_attrs) * FEATURE_ENVY_OWN_RATIO
         ):
             smells.append(
@@ -161,16 +164,14 @@ def _check_rebellious_hierarchy(fp: str, classes) -> list[Smell]:
     for cls in classes:
         if cls.bases and cls.methods:
             overridden = sum(1 for m in cls.methods if not m.name.startswith("__"))
-            if overridden > 5 and len(cls.fields) < 2:
+            if overridden > REBELLIOUS_HIERARCHY_OVERRIDE_THRESHOLD and len(cls.fields) < REBELLIOUS_HIERARCHY_MIN_FIELDS:
                 smells.append(
                     Smell.create(
                         SmellType.REBELLIOUS_HIERARCHY,
                         fp,
                         cls.line_start,
                         f"class {cls.name}",
-                        "Subclass overrides {0} methods but defines few fields — may not extend properly".format(
-                            overridden
-                        ),
+                        f"Subclass overrides {overridden} methods but defines few fields — may not extend properly",
                     )
                 )
     return smells

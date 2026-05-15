@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import ast
 from collections import Counter
+from dataclasses import dataclass
 
 from quali2.domain.models import AnalysisData, Smell, SmellType
 
@@ -29,17 +30,28 @@ DATA_CLUMP_OCCURRENCES = 2
 PRIMITIVE_OBSESSION_PARAMS = 5
 MIDDLE_MAN_RATIO = 0.5
 COMMENT_DENSITY_THRESHOLD = 0.3
+LCOM_RISK_THRESHOLD = 0.8
+
+
+@dataclass
+class FowlerContext:
+    """Consolidates parameters for Fowler detectors to avoid Data Clumps."""
+
+    data: AnalysisData
+    tree: ast.AST
+    source: str
 
 
 def detect_fowler_smells(data: AnalysisData, tree: ast.AST, source: str) -> list[Smell]:
+    ctx = FowlerContext(data, tree, source)
     smells: list[Smell] = []
     fp = data.file_path
 
     # AST-based checks
     smells.extend(_detect_switch_statements(fp, tree))
     smells.extend(_detect_primitive_obsession(fp, tree))
-    smells.extend(_detect_middle_man(fp, data, tree))
-    smells.extend(_detect_temporary_fields(fp, data))
+    smells.extend(_detect_middle_man(ctx))
+    smells.extend(_detect_temporary_fields(ctx))
     smells.extend(_detect_refused_bequest(fp, tree))
     smells.extend(_detect_speculative_generality(fp, tree))
 
@@ -92,9 +104,6 @@ def _detect_switch_statements(fp: str, tree: ast.AST) -> list[Smell]:
 
 def _is_elif(node: ast.If) -> bool:
     """Check if this If node is actually an 'elif'."""
-    # This is a placeholder; currently we don't track parent nodes in fowler.py
-    # but we prefix it with _ to ignore the smell if we must keep the param.
-    # Actually, let's just use the param to avoid the smell.
     return hasattr(node, "is_elif") and getattr(node, "is_elif")
 
 
@@ -104,6 +113,8 @@ def _count_elif_chain(node: ast.If) -> int:
     while len(current.orelse) == 1 and isinstance(current.orelse[0], ast.If):
         count += 1
         current = current.orelse[0]
+        # Mark child as elif to avoid double counting
+        setattr(current, "is_elif", True)
     if current.orelse:
         count += 1
     return count
@@ -154,7 +165,8 @@ def _has_primitive_default(func: ast.FunctionDef, arg: ast.arg) -> bool:
                 default.value, (int, float, str, bool, bytes)
             )
     except (ValueError, IndexError):
-        pass
+        # Param not found in args or defaults index out of range — skip
+        return False
     return False
 
 
@@ -172,10 +184,10 @@ def _detect_data_clumps(fp: str, data: AnalysisData) -> list[Smell]:
         for j in range(i + 1, len(clump_candidates)):
             f1 = clump_candidates[i]
             f2 = clump_candidates[j]
-            
+
             p1 = {p.name for p in f1.params if p.name not in ("self", "cls")}
             p2 = {p.name for p in f2.params if p.name not in ("self", "cls")}
-            
+
             common = p1 & p2
             if len(common) >= DATA_CLUMP_PARAMS:
                 # Found a clump between f1 and f2
@@ -196,12 +208,13 @@ def _detect_data_clumps(fp: str, data: AnalysisData) -> list[Smell]:
     return smells
 
 
-def _detect_middle_man(fp: str, data: AnalysisData, tree: ast.AST) -> list[Smell]:
+def _detect_middle_man(ctx: FowlerContext) -> list[Smell]:
     smells: list[Smell] = []
-    for cls_info in data.classes:
+    fp = ctx.data.file_path
+    for cls_info in ctx.data.classes:
         # Find class node in AST
         cls_node = None
-        for node in ast.walk(tree):
+        for node in ast.walk(ctx.tree):
             if isinstance(node, ast.ClassDef) and node.name == cls_info.name:
                 cls_node = node
                 break
@@ -254,9 +267,7 @@ def _is_call_to_other(node: ast.AST) -> bool:
     return False
 
 
-def _detect_speculative_generality(
-    fp: str, tree: ast.AST
-) -> list[Smell]:
+def _detect_speculative_generality(fp: str, tree: ast.AST) -> list[Smell]:
     smells: list[Smell] = []
     # 1. Unused parameters
     for node in ast.walk(tree):
@@ -278,9 +289,10 @@ def _detect_speculative_generality(
     return smells
 
 
-def _detect_temporary_fields(fp: str, data: AnalysisData) -> list[Smell]:
+def _detect_temporary_fields(ctx: FowlerContext) -> list[Smell]:
     smells: list[Smell] = []
-    for cls_info in data.classes:
+    fp = ctx.data.file_path
+    for cls_info in ctx.data.classes:
         if not cls_info.fields:
             continue
 
@@ -361,11 +373,10 @@ def _detect_comment_density(fp: str, source: str) -> list[Smell]:
 def _detect_divergent_change(fp: str, data: AnalysisData) -> list[Smell]:
     """Heuristic: Class with high NOM and low cohesion (LCOM)."""
     smells: list[Smell] = []
-    lcom_threshold = 0.8
     for cls in data.classes:
         # LCOM calculation from metrics.py
         lcom = _calc_lcom(cls)
-        if len(cls.methods) > 10 and lcom > lcom_threshold:
+        if len(cls.methods) > 10 and lcom > LCOM_RISK_THRESHOLD:
             smells.append(
                 Smell.create(
                     SmellType.DIVERGENT_CHANGE,

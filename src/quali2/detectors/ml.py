@@ -17,6 +17,15 @@ except ImportError:
 from quali2.domain.models import AnalysisData, Smell, SmellType
 
 
+class MLScanner:
+    """Helper to scan ML-specific tokens and avoid Data Clumps."""
+
+    def __init__(self, fp: str, tokens: list):
+        self.fp = fp
+        self.tokens = tokens
+        self.n = len(tokens)
+
+
 def detect_ml_smells(
     data: AnalysisData,
     source: str,
@@ -33,238 +42,180 @@ def detect_ml_smells(
     uses_torch = any("torch" in imp.module for imp in data.imports)
 
     if not (uses_pandas or uses_numpy or uses_torch):
-        return smells
+        return []
 
     if token_stream is None:
-        token_stream = CommonTokenStream(Python3Lexer(InputStream(source)))
+        if Python3Lexer is None:
+            return []
+        input_stream = InputStream(source)
+        lexer = Python3Lexer(input_stream)
+        token_stream = CommonTokenStream(lexer)
     token_stream.fill()
     tokens = token_stream.tokens
 
-    smells.extend(_check_token_smells(fp, tokens, uses_pandas, uses_numpy, uses_torch))
-    smells.extend(_check_line_smells(fp, lines, uses_pandas))
+    scanner = MLScanner(fp, tokens)
 
+    smells.extend(_check_token_smells(scanner, uses_pandas, uses_numpy, uses_torch))
+    smells.extend(_check_line_smells(fp, lines, uses_pandas))
     return smells
 
 
 def _check_token_smells(
-    fp: str,
-    tokens: list,
-    uses_pandas: bool,
-    uses_numpy: bool,
-    uses_torch: bool,
+    scanner: MLScanner, uses_pandas: bool, uses_numpy: bool, uses_torch: bool
 ) -> list[Smell]:
     smells: list[Smell] = []
-    if uses_pandas or uses_numpy:
-        smells.extend(_detect_broken_nan(fp, tokens))
-    if uses_pandas:
-        smells.extend(_detect_chain_indexing(fp, tokens))
-        smells.extend(_detect_unnecessary_iteration(fp, tokens))
-    if uses_torch:
-        smells.extend(_detect_forward_bypass(fp, tokens))
+    for i in range(scanner.n):
+        t = scanner.tokens[i]
+        if (uses_pandas or uses_numpy) and t.type == Python3Lexer.COMPARISON:
+            smells.extend(_detect_broken_nan(scanner, i))
+        if uses_pandas and t.type == Python3Lexer.LSQB:
+            smells.extend(_detect_chain_indexing(scanner, i))
+        if uses_pandas and t.type == Python3Lexer.NAME and t.text in ("iterrows", "itertuples"):
+            smells.extend(_detect_unnecessary_iteration(scanner, i))
+        if uses_torch and t.type == Python3Lexer.DOT:
+            smells.extend(_detect_forward_bypass(scanner, i))
     return smells
 
 
 def _check_line_smells(fp: str, lines: list[str], uses_pandas: bool) -> list[Smell]:
-    if not uses_pandas:
-        return []
     smells: list[Smell] = []
     for i, line in enumerate(lines, 1):
         stripped = line.strip()
-        if ".merge(" in stripped and "on=" not in stripped and "on =" not in stripped:
+        if uses_pandas and ".merge(" in stripped and "on=" not in stripped:
             smells.append(
                 Smell.create(
                     SmellType.AMBIGUOUS_MERGE_KEY,
                     fp,
                     i,
                     "<line>",
-                    "merge() called without explicit 'on' parameter — may use unintended join keys",
+                    "Call to .merge() without explicit 'on=' key",
                 )
             )
-        if ".values" in stripped and "dtype" not in stripped:
-            smells.append(
-                Smell.create(
-                    SmellType.TYPE_BLIND_CONVERSION,
-                    fp,
-                    i,
-                    "<line>",
-                    "Accessing .values on DataFrame with potential mixed types — consider .to_numpy()",
+        if uses_pandas and ".values" in stripped and "dtype" not in stripped:
+            if ".values" in stripped and not any(x in stripped for x in (".to_numpy", ".astype")):
+                 smells.append(
+                    Smell.create(
+                        SmellType.TYPE_BLIND_CONVERSION,
+                        fp,
+                        i,
+                        "<line>",
+                        "Direct .values access is type-blind; use .to_numpy() or specify dtype",
+                    )
                 )
-            )
     return smells
 
 
-# ---------------------------------------------------------------------------
-# Token-stream helpers
-# ---------------------------------------------------------------------------
-
-
-def _detect_broken_nan(fp: str, tokens: list) -> list[Smell]:
-    smells: list[Smell] = []
-    n = len(tokens)
-    seen_lines: set[int] = set()
-    for i, tok in enumerate(tokens):
-        if tok.type != Python3Lexer.EQUALS:
-            continue
-        if tok.line in seen_lines:
-            continue
-        j = i + 1
-        if j >= n:
-            continue
-        nt = tokens[j]
-        is_nan = _is_nan_token(tokens, j, n)
-        if is_nan:
-            seen_lines.add(tok.line)
-            smells.append(
-                Smell.create(
-                    SmellType.BROKEN_NAN_CHECK,
-                    fp,
-                    tok.line,
-                    "<line>",
-                    "Direct comparison with NaN always returns False — use math.isnan() or pd.isna()",
-                )
+def _detect_broken_nan(scanner: MLScanner, i: int) -> list[Smell]:
+    if i > 0 and _is_nan_token(scanner, i - 1):
+        return [
+            Smell.create(
+                SmellType.BROKEN_NAN_CHECK,
+                scanner.fp,
+                scanner.tokens[i].line,
+                "<comparison>",
+                "Direct comparison with NaN always returns False; use pd.isna() or math.isnan()",
             )
-    return smells
+        ]
+    if i + 1 < scanner.n and _is_nan_token(scanner, i + 1):
+        return [
+            Smell.create(
+                SmellType.BROKEN_NAN_CHECK,
+                scanner.fp,
+                scanner.tokens[i].line,
+                "<comparison>",
+                "Direct comparison with NaN always returns False; use pd.isna() or math.isnan()",
+            )
+        ]
+    return []
 
 
-def _is_nan_token(tokens: list, j: int, n: int) -> bool:
-    nt = tokens[j]
-    if nt.type == Python3Lexer.NAME and nt.text in ("nan", "NaN"):
+def _is_nan_token(scanner: MLScanner, j: int) -> bool:
+    if j < 0 or j >= scanner.n:
+        return False
+    t = scanner.tokens[j]
+    if t.text in ("nan", "NaN"):
         return True
-    if _is_dotted_nan(tokens, j, n):
+    if _is_dotted_nan(scanner, j):
         return True
-    if _is_float_nan(tokens, j, n):
+    if _is_float_nan(scanner, j):
         return True
     return False
 
 
-def _is_dotted_nan(tokens: list, j: int, n: int) -> bool:
-    nt = tokens[j]
-    if nt.type != Python3Lexer.NAME or j + 2 >= n:
+def _is_dotted_nan(scanner: MLScanner, j: int) -> bool:
+    if j + 2 >= scanner.n:
         return False
-    return (
-        tokens[j + 1].type == Python3Lexer.DOT
-        and tokens[j + 2].type == Python3Lexer.NAME
-        and tokens[j + 2].text == "nan"
-    )
+    tks = scanner.tokens
+    if tks[j].text in ("np", "pd", "numpy", "pandas") and tks[j+1].text == "." and tks[j+2].text in ("nan", "NaN", "NA"):
+        return True
+    return False
 
 
-def _is_float_nan(tokens: list, j: int, n: int) -> bool:
-    nt = tokens[j]
-    if nt.type != Python3Lexer.NAME or nt.text != "float" or j + 3 >= n:
+def _is_float_nan(scanner: MLScanner, j: int) -> bool:
+    if j + 3 >= scanner.n:
         return False
-    return (
-        tokens[j + 1].type == Python3Lexer.OPEN_PAREN
-        and tokens[j + 2].type == Python3Lexer.STRING
-        and "nan" in tokens[j + 2].text.lower()
-    )
+    tks = scanner.tokens
+    if tks[j].text == "float" and tks[j+1].text == "(" and tks[j+2].text in ("'nan'", '"nan"') and tks[j+3].text == ")":
+        return True
+    return False
 
 
-def _is_chain_index(tokens: list, i: int, n: int) -> bool:
-    if i + 5 >= n:
+def _is_chain_index(scanner: MLScanner, i: int) -> bool:
+    if i + 1 >= scanner.n:
         return False
-    return (
-        tokens[i].type == Python3Lexer.NAME
-        and tokens[i + 1].type == Python3Lexer.OPEN_BRACK
-        and tokens[i + 2].type == Python3Lexer.STRING
-        and tokens[i + 3].type == Python3Lexer.CLOSE_BRACK
-        and tokens[i + 4].type == Python3Lexer.OPEN_BRACK
-        and tokens[i + 5].type == Python3Lexer.STRING
-    )
+    return scanner.tokens[i].text == "]" and scanner.tokens[i+1].text == "["
 
 
-def _detect_chain_indexing(fp: str, tokens: list) -> list[Smell]:
-    smells: list[Smell] = []
-    n = len(tokens)
-    seen_lines: set[int] = set()
-    for i in range(n - 5):
-        if not _is_chain_index(tokens, i, n):
-            continue
-        line = tokens[i].line
-        if line not in seen_lines:
-            seen_lines.add(line)
-            smells.append(
-                Smell.create(
-                    SmellType.CHAIN_INDEXING,
-                    fp,
-                    line,
-                    "<line>",
-                    f"Chained indexing on DataFrame: {tokens[i].text}[...][...] — use .loc[] instead",
-                )
+def _detect_chain_indexing(scanner: MLScanner, i: int) -> list[Smell]:
+    if _is_chain_index(scanner, i):
+        return [
+            Smell.create(
+                SmellType.CHAIN_INDEXING,
+                scanner.fp,
+                scanner.tokens[i].line,
+                "<indexing>",
+                "Chained indexing detected; use .loc[] or .iloc[] for safer access",
             )
-    return smells
+        ]
+    return []
 
 
-def _is_iter_call(tokens: list, k: int, n: int, iter_methods: frozenset) -> bool:
-    if k + 3 >= n:
+def _is_iter_call(scanner: MLScanner, i: int) -> bool:
+    if i + 1 >= scanner.n:
         return False
-    return (
-        tokens[k].type == Python3Lexer.NAME
-        and tokens[k + 1].type == Python3Lexer.DOT
-        and tokens[k + 2].type == Python3Lexer.NAME
-        and tokens[k + 2].text in iter_methods
-        and tokens[k + 3].type == Python3Lexer.OPEN_PAREN
-    )
+    return scanner.tokens[i+1].text == "("
 
 
-def _detect_unnecessary_iteration(fp: str, tokens: list) -> list[Smell]:
-    iter_methods = frozenset({"iterrows", "itertuples"})
-    smells: list[Smell] = []
-    n = len(tokens)
-    seen_lines: set[int] = set()
-    for i, tok in enumerate(tokens):
-        if tok.type != Python3Lexer.FOR or tok.line in seen_lines:
-            continue
-        j = i + 1
-        while j < n and tokens[j].type != Python3Lexer.IN:
-            j += 1
-        if j >= n:
-            continue
-        k = j + 1
-        if not _is_iter_call(tokens, k, n, iter_methods):
-            continue
-        seen_lines.add(tok.line)
-        smells.append(
+def _detect_unnecessary_iteration(scanner: MLScanner, i: int) -> list[Smell]:
+    if _is_iter_call(scanner, i):
+        return [
             Smell.create(
                 SmellType.UNNECESSARY_ITERATION,
-                fp,
-                tok.line,
-                "<line>",
-                f"Iterating over DataFrame '{tokens[k].text}' — prefer vectorized operations",
+                scanner.fp,
+                scanner.tokens[i].line,
+                scanner.tokens[i].text,
+                f"Row-based iteration with .{scanner.tokens[i].text}() is slow; use vectorized operations",
             )
-        )
-    return smells
+        ]
+    return []
 
 
-def _is_forward_call(tokens: list, i: int, n: int) -> bool:
-    if i + 3 >= n:
+def _is_forward_call(scanner: MLScanner, i: int) -> bool:
+    if i + 2 >= scanner.n:
         return False
-    return (
-        tokens[i].type == Python3Lexer.NAME
-        and tokens[i + 1].type == Python3Lexer.DOT
-        and tokens[i + 2].type == Python3Lexer.NAME
-        and tokens[i + 2].text == "forward"
-        and tokens[i + 3].type == Python3Lexer.OPEN_PAREN
-    )
+    tks = scanner.tokens
+    return tks[i].text == "." and tks[i+1].text == "forward" and tks[i+2].text == "("
 
 
-def _detect_forward_bypass(fp: str, tokens: list) -> list[Smell]:
-    smells: list[Smell] = []
-    n = len(tokens)
-    seen_lines: set[int] = set()
-    for i in range(n - 3):
-        if not _is_forward_call(tokens, i, n):
-            continue
-        line = tokens[i].line
-        if line not in seen_lines:
-            seen_lines.add(line)
-            smells.append(
-                Smell.create(
-                    SmellType.FORWARD_BYPASS,
-                    fp,
-                    line,
-                    "<line>",
-                    f"Calling .forward() directly on '{tokens[i].text}' — use model(input) instead",
-                )
+def _detect_forward_bypass(scanner: MLScanner, i: int) -> list[Smell]:
+    if _is_forward_call(scanner, i):
+        return [
+            Smell.create(
+                SmellType.FORWARD_BYPASS,
+                scanner.fp,
+                scanner.tokens[i].line,
+                "forward",
+                "Direct call to .forward() bypasses hooks; call the model object instead",
             )
-    return smells
-    return smells
+        ]
+    return []

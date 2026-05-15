@@ -22,11 +22,8 @@ class AstCodeVisitor(ast.NodeVisitor):
         self._source_lines = source_lines
         self._class_stack: list[ClassInfo] = []
         self._method_stack: list[MethodInfo] = []
-        self._class_map: dict[str, ClassInfo] = {}
-
-    # ------------------------------------------------------------------
-    # Imports
-    # ------------------------------------------------------------------
+        # Persistent state for inheritance tracking within the same file
+        self._seen_classes: dict[str, ClassInfo] = {}
 
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
@@ -36,14 +33,11 @@ class AstCodeVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
-        mod = node.module or ""
-        names = [a.name for a in node.names]
-        self.data.imports.append(ImportInfo(module=mod, names=names, line=node.lineno))
+        if node.module:
+            self.data.imports.append(
+                ImportInfo(module=node.module, alias=None, line=node.lineno)
+            )
         self.generic_visit(node)
-
-    # ------------------------------------------------------------------
-    # Functions
-    # ------------------------------------------------------------------
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         self._process_function(node)
@@ -51,28 +45,29 @@ class AstCodeVisitor(ast.NodeVisitor):
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
         self._process_function(node)
 
-    def _process_function(self, node) -> None:
+    def _process_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
         name = node.name
-        line_start = node.lineno
-        line_end = getattr(node, "end_lineno", node.lineno)
         params = [ParamInfo(name=arg.arg) for arg in node.args.args]
+        line_start = node.lineno
+        line_end = getattr(node, "end_lineno", line_start)
+
+        # Basic complexity: start with 1, add for branches
         cc = _calc_cyclomatic(node)
 
         mi = MethodInfo(
             name=name,
+            params=params,
             line_start=line_start,
             line_end=line_end,
-            params=params,
+            num_statements=len(node.body),
             cyclomatic_complexity=cc,
-            num_statements=line_end - line_start + 1,
         )
 
+        # Track attribute accesses
+        mi.accesses_attrs.update(_collect_self_attr_refs(node))
+
         if self._class_stack:
-            cls = self._class_stack[-1]
-            cls.methods.append(mi)
-            if name == "__init__":
-                for attr_name in _collect_self_attr_refs(node):
-                    cls.fields.add(attr_name)
+            self._class_stack[-1].methods.append(mi)
         else:
             self.data.top_level_functions.append(mi)
 
@@ -80,33 +75,33 @@ class AstCodeVisitor(ast.NodeVisitor):
         self.generic_visit(node)
         self._method_stack.pop()
 
-    # ------------------------------------------------------------------
-    # Classes
-    # ------------------------------------------------------------------
-
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         name = node.name
+        bases = [_ast_name(b) for b in node.bases]
         line_start = node.lineno
-        line_end = getattr(node, "end_lineno", node.lineno)
+        line_end = getattr(node, "end_lineno", line_start)
 
-        bases: list[str] = []
-        for base in node.bases:
-            bases.append(_ast_name(base))
+        depth = _inheritance_depth(bases, self._seen_classes)
 
-        decorators = [_ast_name(d) for d in node.decorator_list]
-
-        depth = _inheritance_depth(bases, self._class_map)
         ci = ClassInfo(
             name=name,
+            bases=bases,
             line_start=line_start,
             line_end=line_end,
-            bases=bases,
-            decorators=decorators,
             depth_inheritance=depth,
         )
 
+        # Extract fields (assignments to self.x in __init__)
+        for child in node.body:
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) and child.name == "__init__":
+                for stmt in child.body:
+                    if isinstance(stmt, ast.Assign):
+                        for target in stmt.targets:
+                            if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name) and target.value.id == "self":
+                                ci.fields.add(target.attr)
+
         self.data.classes.append(ci)
-        self._class_map[name] = ci
+        self._seen_classes[name] = ci
         self._class_stack.append(ci)
         self.generic_visit(node)
         self._class_stack.pop()
@@ -126,46 +121,39 @@ class AstCodeVisitor(ast.NodeVisitor):
 # ---------------------------------------------------------------------------
 
 
-def _ast_name(node: ast.expr) -> str:
+def _ast_name(node: ast.AST) -> str:
     if isinstance(node, ast.Name):
         return node.id
     if isinstance(node, ast.Attribute):
-        return _ast_name(node.value) + "." + node.attr
-    if isinstance(node, ast.Subscript):
-        return _ast_name(node.value)
-    if isinstance(node, ast.Constant):
-        return repr(node.value)
-    if isinstance(node, ast.Call):
-        return _ast_name(node.func)
-    return "<?>"
+        return f"{_ast_name(node.value)}.{node.attr}"
+    return "object"
 
 
 def _inheritance_depth(bases: list[str], class_map: dict[str, ClassInfo]) -> int:
-    if not bases or bases == ["object"]:
+    if not bases:
         return 0
-    max_depth = 0
+    max_d = 0
     for b in bases:
         if b in class_map:
-            max_depth = max(max_depth, class_map[b].depth_inheritance + 1)
+            max_d = max(max_d, class_map[b].depth_inheritance + 1)
         else:
-            max_depth = max(max_depth, 1)
-    return max_depth
+            # External or object
+            max_d = max(max_d, 1)
+    return max_d
 
 
 def _calc_cyclomatic(node: ast.AST) -> int:
-    complexity = 1
+    cc = 1
     for child in ast.walk(node):
-        if isinstance(child, (ast.If, ast.While, ast.For)):
-            complexity += 1
+        if isinstance(child, (ast.If, ast.While, ast.For, ast.ExceptHandler, ast.With)):
+            cc += 1
         elif isinstance(child, ast.BoolOp):
-            complexity += len(child.values) - 1
-        elif isinstance(child, ast.ExceptHandler):
-            complexity += 1
-    return complexity
+            cc += len(child.values) - 1
+    return cc
 
 
 def _collect_self_attr_refs(node: ast.AST) -> set[str]:
-    refs: set[str] = set()
+    refs = set()
     for child in ast.walk(node):
         if (
             isinstance(child, ast.Attribute)

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 from quali2.analysis.metrics import compute_metrics
@@ -41,6 +42,15 @@ AUTO_GENERATED_MARKERS = (
 )
 
 
+@dataclass
+class AnalysisContext:
+    """Consolidates shared parameters for analysis to avoid Data Clumps."""
+
+    data: AnalysisData
+    source: str
+    tree: ast.AST | None
+
+
 # ── Backend: AST (default) ─────────────────────────────────────────────────
 
 
@@ -66,24 +76,24 @@ def _parse_ast(file_path: str) -> tuple[AnalysisData, str, ast.AST | None]:
     return visitor.data, source, tree
 
 
-def _analyze_ast(data: AnalysisData, source: str, tree: ast.AST | None) -> list[Smell]:
+def _analyze_ast(ctx: AnalysisContext) -> list[Smell]:
     """Run detectors using AST backend."""
     from quali2.detectors.fowler import detect_fowler_smells
 
     smells: list[Smell] = []
-    smells.extend(detect_architecture_smells(data))
-    smells.extend(detect_design_smells(data, source))
-    if tree is not None:
-        smells.extend(_impl_smells_ast(data, source, tree))
-        smells.extend(_ml_smells_ast(data, source, tree))
-        smells.extend(detect_fowler_smells(data, tree, source))
+    smells.extend(detect_architecture_smells(ctx.data))
+    smells.extend(detect_design_smells(ctx.data, ctx.source))
+    if ctx.tree is not None:
+        smells.extend(_impl_smells_ast(ctx))
+        smells.extend(_ml_smells_ast(ctx))
+        smells.extend(detect_fowler_smells(ctx.data, ctx.tree, ctx.source))
     else:
         # Fallback: line-based only
-        smells.extend(_impl_smells_lines(data.file_path, source))
+        smells.extend(_impl_smells_lines(ctx.data.file_path, ctx.source))
     return smells
 
 
-def _impl_smells_ast(data: AnalysisData, source: str, tree: ast.AST) -> list[Smell]:
+def _impl_smells_ast(ctx: AnalysisContext) -> list[Smell]:
     from quali2.detectors.ast_detectors import (
         ast_detect_complex_conditionals,
         ast_detect_empty_catch_clauses,
@@ -93,32 +103,50 @@ def _impl_smells_ast(data: AnalysisData, source: str, tree: ast.AST) -> list[Sme
         ast_detect_missing_default,
     )
     from quali2.detectors.implementation import (
-        WHITELISTED_NUMBERS,
         _check_function_smells,
         _check_line_smells,
     )
 
-    fp = data.file_path
-    lines = source.splitlines()
-    all_funcs = list(data.top_level_functions)
-    for cls in data.classes:
+    fp = ctx.data.file_path
+    lines = ctx.source.splitlines()
+    all_funcs = list(ctx.data.top_level_functions)
+    for cls in ctx.data.classes:
         all_funcs.extend(cls.methods)
 
     smells: list[Smell] = []
     smells.extend(_check_function_smells(fp, all_funcs))
     smells.extend(_check_line_smells(fp, lines))
-    smells.extend(ast_detect_empty_catch_clauses(fp, tree))
-    smells.extend(ast_detect_magic_numbers(fp, data, tree, source))
-    smells.extend(ast_detect_complex_conditionals(fp, tree))
-    smells.extend(ast_detect_missing_default(fp, tree))
-    smells.extend(ast_detect_long_message_chains(fp, tree))
-    smells.extend(ast_detect_long_lambdas(fp, tree))
+    if ctx.tree is not None:
+        smells.extend(ast_detect_empty_catch_clauses(fp, ctx.tree))
+        smells.extend(ast_detect_magic_numbers(fp, ctx.data, ctx.tree, ctx.source))
+        smells.extend(ast_detect_complex_conditionals(fp, ctx.tree))
+        smells.extend(ast_detect_missing_default(fp, ctx.tree))
+        smells.extend(ast_detect_long_message_chains(fp, ctx.tree))
+        smells.extend(ast_detect_long_lambdas(fp, ctx.tree))
     return smells
 
 
-def _ml_smells_ast(data: AnalysisData, source: str, tree: ast.AST) -> list[Smell]:
+def _ml_smells_ast(ctx: AnalysisContext) -> list[Smell]:
+    data = ctx.data
+    
+    uses_pandas = any("pandas" in imp.module or imp.alias == "pd" for imp in data.imports)
+    uses_numpy = any("numpy" in imp.module or imp.alias == "np" for imp in data.imports)
+    uses_torch = any("torch" in imp.module for imp in data.imports)
+
+    if not (uses_pandas or uses_numpy or uses_torch):
+        return []
+
+    smells: list[Smell] = []
+    if ctx.tree is not None:
+        smells.extend(_ml_smells_tree(ctx, uses_pandas, uses_numpy, uses_torch))
+    else:
+        smells.extend(_ml_smells_no_tree(ctx, uses_pandas))
+
+    return smells
+
+
+def _ml_smells_tree(ctx: AnalysisContext, pandas: bool, numpy: bool, torch: bool) -> list[Smell]:
     from quali2.detectors.ast_detectors import (
-        ast_detect_ambiguous_merge_key,
         ast_detect_broken_nan,
         ast_detect_chain_indexing,
         ast_detect_forward_bypass,
@@ -126,29 +154,27 @@ def _ml_smells_ast(data: AnalysisData, source: str, tree: ast.AST) -> list[Smell
     )
     from quali2.detectors.ml import _check_line_smells as _ml_line_smells
 
-    uses_pandas = any(
-        "pandas" in imp.module or imp.alias == "pd" for imp in data.imports
-    )
-    uses_numpy = any("numpy" in imp.module or imp.alias == "np" for imp in data.imports)
-    uses_torch = any("torch" in imp.module for imp in data.imports)
-
-    if not (uses_pandas or uses_numpy or uses_torch):
-        return []
-
-    fp = data.file_path
-    lines = source.splitlines()
+    fp = ctx.data.file_path
+    tree = ctx.tree
+    lines = ctx.source.splitlines()
     smells: list[Smell] = []
 
-    if uses_pandas or uses_numpy:
+    if pandas or numpy:
         smells.extend(ast_detect_broken_nan(fp, tree))
-    if uses_pandas:
+    if pandas:
         smells.extend(ast_detect_chain_indexing(fp, tree))
         smells.extend(ast_detect_unnecessary_iteration(fp, tree))
         smells.extend(_ml_line_smells(fp, lines, uses_pandas=True))
-    if uses_torch:
+    if torch:
         smells.extend(ast_detect_forward_bypass(fp, tree))
-
     return smells
+
+
+def _ml_smells_no_tree(ctx: AnalysisContext, pandas: bool) -> list[Smell]:
+    from quali2.detectors.ml import _check_line_smells as _ml_line_smells
+    if pandas:
+        return _ml_line_smells(ctx.data.file_path, ctx.source.splitlines(), uses_pandas=True)
+    return []
 
 
 def _impl_smells_lines(fp: str, source: str) -> list[Smell]:
@@ -226,8 +252,14 @@ def analyze_file(file_path: str, backend: str = "ast") -> FileReport:
     """Full analysis of one file."""
     parse_fn, analyze_fn = _BACKENDS[backend]
     data, source, artifact = parse_fn(file_path)
+
+    if backend == "ast":
+        ctx = AnalysisContext(data, source, artifact)
+        smells = analyze_fn(ctx)
+    else:
+        smells = analyze_fn(data, source, artifact)
+
     metrics = compute_metrics(data)
-    smells = analyze_fn(data, source, artifact)
     return FileReport(
         file_path=file_path, smells=smells, metrics=metrics, analysis=data
     )
@@ -243,7 +275,13 @@ def analyze_project(path: str, backend: str = "ast") -> ProjectReport:
     for f in files:
         data, source, artifact = parse_fn(f)
         metrics = compute_metrics(data)
-        smells = analyze_fn(data, source, artifact)
+
+        if backend == "ast":
+            ctx = AnalysisContext(data, source, artifact)
+            smells = analyze_fn(ctx)
+        else:
+            smells = analyze_fn(data, source, artifact)
+
         reports.append(
             FileReport(file_path=f, smells=smells, metrics=metrics, analysis=data)
         )

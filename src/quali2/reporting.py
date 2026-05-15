@@ -14,6 +14,7 @@ from quali2.domain.models import (
 )
 
 _SEV_ICONS = {"High": "!!", "Medium": "! ", "Low": "i "}
+TERMINAL_WIDTH = 72
 
 
 def _format_smell(s: Smell) -> list[str]:
@@ -30,9 +31,9 @@ def _sort_smells(smells: list[Smell]) -> list[Smell]:
 
 def _format_file_section(fr) -> list[str]:
     lines = [
-        f"\n{'=' * 72}",
+        f"\n{'=' * TERMINAL_WIDTH}",
         f"  {fr.file_path}",
-        f"{'=' * 72}",
+        f"{'=' * TERMINAL_WIDTH}",
     ]
     if fr.smells:
         lines.append(f"\n  Smells ({len(fr.smells)}):")
@@ -49,9 +50,9 @@ def _format_file_section(fr) -> list[str]:
 
 def _format_summary(report: ProjectReport) -> list[str]:
     lines = [
-        f"\n{'=' * 72}",
+        f"\n{'=' * TERMINAL_WIDTH}",
         "  Summary",
-        f"{'=' * 72}",
+        f"{'=' * TERMINAL_WIDTH}",
         f"  Files analyzed : {len(report.files)}",
         f"  Total smells   : {report.total_smells}",
         f"  Total metrics  : {report.total_metrics}",

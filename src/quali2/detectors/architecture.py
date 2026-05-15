@@ -9,7 +9,6 @@ and are invoked separately via detect_cross_file_smells().
 from __future__ import annotations
 
 import os
-from collections import defaultdict
 
 from quali2.domain.models import AnalysisData, Smell, SmellType
 
@@ -17,8 +16,10 @@ GOD_COMPONENT_LOC = 1000
 GOD_COMPONENT_CLASSES = 10
 FEATURE_CONCENTRATION_IMPORT_MODULES = 10
 DENSE_STRUCTURE_AVG_ACCESSES = 10
+DENSE_STRUCTURE_MIN_METHODS = 5
 UNSTABLE_DEPENDENCY_THRESHOLD = 0.4
 BROKEN_MODULARIZATION_SHARED_IMPORTS = 6
+ZERO_VALUE = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -87,7 +88,7 @@ def _detect_dense_structure(data: AnalysisData) -> list[Smell]:
     total_methods = sum(len(cls.methods) for cls in data.classes)
     if total_methods > 0:
         ratio = total_refs / total_methods
-        if ratio > DENSE_STRUCTURE_AVG_ACCESSES and total_methods > 5:
+        if ratio > DENSE_STRUCTURE_AVG_ACCESSES and total_methods > DENSE_STRUCTURE_MIN_METHODS:
             return [
                 Smell.create(
                     SmellType.DENSE_STRUCTURE,
@@ -128,7 +129,7 @@ def _compute_instability(dep_graph: dict[str, set[str]]) -> dict[str, float]:
         fan_out = len(deps)
         fan_in = sum(1 for m, ds in dep_graph.items() if mod in ds)
         total = fan_in + fan_out
-        instability[mod] = fan_out / total if total > 0 else 0.0
+        instability[mod] = fan_out / total if total > 0 else ZERO_VALUE
     return instability
 
 
@@ -147,7 +148,7 @@ def _detect_unstable_dependency(
     my_mod = _file_to_module(fp)
     my_deps = dep_graph.get(my_mod, set())
     unstable_deps = [
-        d for d in my_deps if instability.get(d, 0.0) > UNSTABLE_DEPENDENCY_THRESHOLD
+        d for d in my_deps if instability.get(d, ZERO_VALUE) > UNSTABLE_DEPENDENCY_THRESHOLD
     ]
     if not unstable_deps:
         return []
