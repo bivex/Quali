@@ -151,8 +151,10 @@ def _count_bool_ops(node: ast.AST) -> int:
 
 def ast_detect_missing_default(fp: str, tree: ast.AST) -> list[Smell]:
     smells: list[Smell] = []
+    # Guard for Python < 3.10
+    match_cls = getattr(ast, "Match", type(None))
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Match):
+        if not isinstance(node, match_cls):
             continue
         has_wildcard = any(
             isinstance(case.pattern, MatchAs) and case.pattern.pattern is None
