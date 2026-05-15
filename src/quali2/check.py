@@ -24,23 +24,26 @@ def main() -> None:
     script_args = sys.argv[2:]
 
     # ── Analyze ─────────────────────────────────────────────────────────
+    MAX_SMELLS_TO_SHOW = 10
+    SEPARATOR_WIDTH = 40
+    
     try:
         report = analyze_file(target, backend="ast")
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Warning: Analysis failed: {e}", file=sys.stderr)
     else:
         if report.smells:
-            print(f"{'─' * 40}")
+            print(f"{'─' * SEPARATOR_WIDTH}")
             print(f"  quali2: {len(report.smells)} smell(s) in {target}")
-            print(f"{'─' * 40}")
-            for s in report.smells[:10]:
+            print(f"{'─' * SEPARATOR_WIDTH}")
+            for s in report.smells[:MAX_SMELLS_TO_SHOW]:
                 sev = "!!" if s.severity.value == "High" else "! "
                 print(
                     f"  [{sev}] L{s.line:>4}  [{s.category.value}] {s.smell_type.value}"
                 )
                 print(f"        {s.element}: {s.message}")
-            if len(report.smells) > 10:
-                print(f"  ... and {len(report.smells) - 10} more")
+            if len(report.smells) > MAX_SMELLS_TO_SHOW:
+                print(f"  ... and {len(report.smells) - MAX_SMELLS_TO_SHOW} more")
             print()
 
     # ── Execute ─────────────────────────────────────────────────────────

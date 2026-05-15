@@ -17,6 +17,7 @@ class AstCodeVisitor(ast.NodeVisitor):
     """Walks a Python ast tree and populates an AnalysisData structure."""
 
     def __init__(self, file_path: str, source_lines: list[str]) -> None:
+        super().__init__()
         self.data = AnalysisData(file_path=file_path, total_lines=len(source_lines))
         self._source_lines = source_lines
         self._class_stack: list[ClassInfo] = []
