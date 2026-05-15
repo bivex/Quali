@@ -182,16 +182,18 @@ class ProjectReport:
     def total_metrics(self) -> int:
         return sum(len(f.metrics) for f in self.files)
 
+    @property
+    def _all_smells(self) -> list[Smell]:
+        return [s for f in self.files for s in f.smells]
+
     def smells_by_category(self) -> dict[Category, list[Smell]]:
         result: dict[Category, list[Smell]] = {c: [] for c in Category}
-        for f in self.files:
-            for s in f.smells:
-                result[s.category].append(s)
+        for s in self._all_smells:
+            result[s.category].append(s)
         return result
 
     def smells_by_severity(self) -> dict[Severity, list[Smell]]:
         result: dict[Severity, list[Smell]] = {s: [] for s in Severity}
-        for f in self.files:
-            for s in f.smells:
-                result[s.severity].append(s)
+        for s in self._all_smells:
+            result[s.severity].append(s)
         return result

@@ -25,6 +25,9 @@ LONG_IDENTIFIER_CHARS = 40
 LONG_STATEMENT_CHARS = 120
 LONG_LAMBDA_LINES = 5
 LONG_MESSAGE_CHAIN_DOTS = 4
+CATCH_SEARCH_WINDOW = 50
+EXCEPT_BODY_TOKEN_OFFSET = 3
+COLON_SEARCH_WINDOW = 20
 
 # ---------------------------------------------------------------------------
 # Magic number whitelist — numbers that are universally understood
@@ -201,7 +204,7 @@ def _detect_empty_catch_clauses(scanner: TokenScanner, start: int) -> list[Smell
     tokens = scanner.tokens
     n = scanner.n
     # Look for EXCEPT -> COLON -> NEWLINE -> INDENT -> PASS
-    for j in range(start, min(start + 50, n)):
+    for j in range(start, min(start + CATCH_SEARCH_WINDOW, n)):
         if tokens[j].type == Python3Lexer.EXCEPT:
             colon_idx = _skip_to_colon(scanner, j)
             if colon_idx != -1 and colon_idx + 2 < n:
@@ -210,7 +213,7 @@ def _detect_empty_catch_clauses(scanner: TokenScanner, start: int) -> list[Smell
                 if next_t.type == Python3Lexer.NEWLINE:
                     next_t = tokens[colon_idx + 2]
                 if next_t.type == Python3Lexer.INDENT:
-                    next_t = tokens[colon_idx + 3]
+                    next_t = tokens[colon_idx + EXCEPT_BODY_TOKEN_OFFSET]
                 if next_t.type == Python3Lexer.PASS:
                     return [
                         Smell.create(
@@ -225,7 +228,7 @@ def _detect_empty_catch_clauses(scanner: TokenScanner, start: int) -> list[Smell
 
 
 def _skip_to_colon(scanner: TokenScanner, start: int) -> int:
-    for i in range(start, min(start + 20, scanner.n)):
+    for i in range(start, min(start + COLON_SEARCH_WINDOW, scanner.n)):
         if scanner.tokens[i].type == Python3Lexer.COLON:
             return i
     return -1

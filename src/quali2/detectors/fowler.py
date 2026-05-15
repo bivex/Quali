@@ -29,8 +29,11 @@ DATA_CLUMP_PARAMS = 3
 DATA_CLUMP_OCCURRENCES = 2
 PRIMITIVE_OBSESSION_PARAMS = 5
 MIDDLE_MAN_RATIO = 0.5
+MIDDLE_MAN_MIN_METHODS = 3
 COMMENT_DENSITY_THRESHOLD = 0.3
+COMMENT_DENSITY_MIN_LOC = 5
 LCOM_RISK_THRESHOLD = 0.8
+LCOM_DEFAULT_SCORE = 0.0
 
 
 @dataclass
@@ -231,7 +234,7 @@ def _detect_middle_man(ctx: FowlerContext) -> list[Smell]:
             if _is_delegation(m):
                 delegates += 1
 
-        if len(methods) > 3 and (delegates / len(methods)) >= MIDDLE_MAN_RATIO:
+        if len(methods) > MIDDLE_MAN_MIN_METHODS and (delegates / len(methods)) >= MIDDLE_MAN_RATIO:
             smells.append(
                 Smell.create(
                     SmellType.MIDDLE_MAN,
@@ -347,7 +350,7 @@ def _detect_comment_density(fp: str, source: str) -> list[Smell]:
     smells: list[Smell] = []
     lines = source.splitlines()
     total_loc = len(lines)
-    if total_loc < 5:
+    if total_loc < COMMENT_DENSITY_MIN_LOC:
         return []
 
     comment_lines = 0
@@ -393,7 +396,7 @@ def _calc_lcom(cls) -> float:
     # Simplified LCOM from metrics.py
     methods = [m for m in cls.methods if not m.name.startswith("__")]
     if len(methods) < 2 or not cls.fields:
-        return 0.0
+        return LCOM_DEFAULT_SCORE
     n = len(methods)
     p = 0
     q = 0
@@ -405,7 +408,7 @@ def _calc_lcom(cls) -> float:
             else:
                 p += 1
     total = p + q
-    return (p - q) / total if total > 0 else 0.0
+    return (p - q) / total if total > 0 else LCOM_DEFAULT_SCORE
 
 
 def _detect_shotgun_surgery(fp: str, data: AnalysisData) -> list[Smell]:

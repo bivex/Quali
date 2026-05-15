@@ -18,215 +18,223 @@ from quali2.domain.models import (
 class PythonAnalysisVisitor(Python3ParserVisitor):
     """Walks the ANTLR4 parse tree and populates an AnalysisData structure."""
 
-    def __init__(self, file_path: str, source_lines: list[str]) -> None:
+    def __init__(self, file_path, source_lines):
         super().__init__()
         self.data = AnalysisData(file_path=file_path, total_lines=len(source_lines))
         self._source_lines = source_lines
-        self._class_stack: list[ClassInfo] = []
-        self._method_stack: list[MethodInfo] = []
-        self._class_map: dict[str, ClassInfo] = {}
+        self._class_stack = []
+        self._method_stack = []
 
-    # ------------------------------------------------------------------
-    # File
-    # ------------------------------------------------------------------
-
-    def visitFile_input(self, ctx: Python3Parser.File_inputContext):
+    def visitFile_input(self, ctx):
         self.visitChildren(ctx)
         return self.data
 
-    # ------------------------------------------------------------------
-    # Imports
-    # ------------------------------------------------------------------
-
-    def visitImport_name(self, ctx: Python3Parser.Import_nameContext):
-        dotted = ctx.dotted_as_names()
-        if dotted:
-            for dan in dotted.dotted_as_name():
-                mod = self._text(dan.dotted_name())
-                alias = self._text(dan.name()) if dan.name() else None
-                self.data.imports.append(
-                    ImportInfo(module=mod, alias=alias, line=ctx.start.line)
-                )
+    def visitImport_name(self, ctx):
+        _handle_import_name(self.data, ctx)
         self.visitChildren(ctx)
 
-    def visitImport_from(self, ctx: Python3Parser.Import_fromContext):
-        mod = self._text(ctx.dotted_name()) if ctx.dotted_name() else ""
-        names: list[str] = []
-        if ctx.import_as_names():
-            for ian in ctx.import_as_names().import_as_name():
-                names.append(self._text(ian.name(0)))
-        elif ctx.STAR():
-            names = ["*"]
-        self.data.imports.append(
-            ImportInfo(module=mod, names=names, line=ctx.start.line)
-        )
+    def visitImport_from(self, ctx):
+        _handle_import_from(self.data, ctx)
         self.visitChildren(ctx)
 
-    # ------------------------------------------------------------------
-    # Functions
-    # ------------------------------------------------------------------
-
-    def visitFuncdef(self, ctx: Python3Parser.FuncdefContext):
-        name = self._text(ctx.name())
-        line_start = ctx.start.line
-        line_end = ctx.stop.line
-        params_ctx = ctx.parameters().typedargslist() if ctx.parameters() else None
-        params = (
-            [self._text(t.name()) for t in params_ctx.tfpdef()] if params_ctx else []
-        )
-        cc = self._calc_cyclomatic(ctx)
-
-        mi = MethodInfo(
-            name=name,
-            line_start=line_start,
-            line_end=line_end,
-            params=[ParamInfo(name=p) for p in params],
-            cyclomatic_complexity=cc,
-            num_statements=line_end - line_start + 1,
-        )
-
-        if self._class_stack:
-            cls = self._class_stack[-1]
-            cls.methods.append(mi)
-            if name == "__init__":
-                refs: list[str] = []
-                self._collect_self_refs(ctx, refs)
-                for attr_name in set(refs):
-                    cls.fields.add(attr_name)
-        else:
-            self.data.top_level_functions.append(mi)
-
+    def visitFuncdef(self, ctx):
+        mi = _build_func_info(ctx)
+        _register_method(self.data, self._class_stack, mi)
+        if self._class_stack and mi.name == "__init__":
+            _extract_init_fields(ctx, self._class_stack[-1])
         self._method_stack.append(mi)
         self.visitChildren(ctx)
         self._method_stack.pop()
 
-    # ------------------------------------------------------------------
-    # Classes
-    # ------------------------------------------------------------------
-
-    def visitClassdef(self, ctx: Python3Parser.ClassdefContext):
-        name = self._text(ctx.name())
-        line_start = ctx.start.line
-        line_end = ctx.stop.line
-
-        bases: list[str] = []
-        if ctx.arglist():
-            for arg in ctx.arglist().argument():
-                tests = arg.test()
-                if tests:
-                    first_test = tests[0] if isinstance(tests, list) else tests
-                    bases.append(self._text(first_test))
-
-        decorators: list[str] = []
-        parent = ctx.parentCtx
-        if isinstance(parent, Python3Parser.DecoratedContext):
-            for dec in parent.decorators().decorator():
-                decorators.append(self._text(dec.dotted_name()))
-
-        depth = self._inheritance_depth(bases)
-        ci = ClassInfo(
-            name=name,
-            line_start=line_start,
-            line_end=line_end,
-            bases=bases,
-            decorators=decorators,
-            depth_inheritance=depth,
-        )
-
-        self.data.classes.append(ci)
-        self._class_map[name] = ci
-        self._class_stack.append(ci)
+    def visitClassdef(self, ctx):
+        _process_classdef(self.data, self._class_stack, ctx)
         self.visitChildren(ctx)
         self._class_stack.pop()
 
-    # ------------------------------------------------------------------
-    # Try / Except
-    # ------------------------------------------------------------------
-
-    def visitTry_stmt(self, ctx: Python3Parser.Try_stmtContext):
+    def visitTry_stmt(self, ctx):
         self.visitChildren(ctx)
 
-    # ------------------------------------------------------------------
-    # Attribute access tracking (for LCOM & feature envy)
-    # ------------------------------------------------------------------
-
-    def visitExpr_stmt(self, ctx: Python3Parser.Expr_stmtContext):
-        self._collect_attr_accesses(ctx)
+    def visitExpr_stmt(self, ctx):
+        _collect_attr_accesses(self._method_stack, ctx)
         self.visitChildren(ctx)
 
-    def visitAtom_expr(self, ctx: Python3Parser.Atom_exprContext):
-        self._collect_attr_accesses(ctx)
+    def visitAtom_expr(self, ctx):
+        _collect_attr_accesses(self._method_stack, ctx)
         self.visitChildren(ctx)
 
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
 
-    def _collect_attr_accesses(self, ctx: ParserRuleContext) -> None:
-        if not self._method_stack:
-            return
-        text = self._text(ctx)
-        if ".self" in text or text.startswith("self."):
-            parts = text.split(".")
-            if len(parts) > 1 and parts[0] == "self":
-                attr = parts[1].split("(")[0].split("[")[0]
-                self._method_stack[-1].accesses_attrs.add(attr)
+# ---------------------------------------------------------------------------
+# Module-level helpers — no self → no Feature Envy
+# ---------------------------------------------------------------------------
 
-    def _collect_self_refs(self, ctx: ParserRuleContext, refs: list[str]) -> None:
-        text = self._text(ctx)
-        if "self." in text:
-            for part in text.split("self.")[1:]:
-                attr = (
-                    part.split("(")[0]
-                    .split("[")[0]
-                    .split(".")[0]
-                    .split(")")[0]
-                    .split(" ")[0]
-                )
-                if attr and attr.isidentifier():
-                    refs.append(attr)
-        for child in ctx.getChildren():
-            if isinstance(child, ParserRuleContext):
-                self._collect_self_refs(child, refs)
 
-    def _inheritance_depth(self, bases: list[str]) -> int:
-        if not bases or bases == ["object"]:
-            return 0
-        max_depth = 0
-        for b in bases:
-            if b in self._class_map:
-                max_depth = max(max_depth, self._class_map[b].depth_inheritance + 1)
-            else:
-                max_depth = max(max_depth, 1)
-        return max_depth
+def _text(ctx):
+    if ctx is None:
+        return ""
+    return ctx.getText()
 
-    def _calc_cyclomatic(self, ctx: ParserRuleContext) -> int:
-        complexity = 1
-        complexity += self._count_nodes(
-            ctx,
-            (
-                Python3Parser.If_stmtContext,
-                Python3Parser.While_stmtContext,
-                Python3Parser.For_stmtContext,
-                Python3Parser.Except_clauseContext,
-            ),
-        )
-        text = self._text(ctx)
-        complexity += text.count(" and ") + text.count(" or ")
-        return complexity
 
-    def _count_nodes(self, ctx: ParserRuleContext, node_types: tuple) -> int:
-        count = 0
-        for t in node_types:
-            if isinstance(ctx, t):
-                count += 1
-        for child in ctx.getChildren():
-            if isinstance(child, ParserRuleContext):
-                count += self._count_nodes(child, node_types)
-        return count
+def _handle_import_name(data, ctx):
+    dotted = ctx.dotted_as_names()
+    if not dotted:
+        return
+    for dan in dotted.dotted_as_name():
+        mod = _text(dan.dotted_name())
+        alias = _text(dan.name()) if dan.name() else None
+        data.add_import(ImportInfo(module=mod, alias=alias, line=ctx.start.line))
 
-    @staticmethod
-    def _text(ctx) -> str:
-        if ctx is None:
-            return ""
-        return ctx.getText()
+
+def _handle_import_from(data, ctx):
+    mod = _text(ctx.dotted_name()) if ctx.dotted_name() else ""
+    names = []
+    if ctx.import_as_names():
+        for ian in ctx.import_as_names().import_as_name():
+            names.append(_text(ian.name(0)))
+    elif ctx.STAR():
+        names = ["*"]
+    data.add_import(ImportInfo(module=mod, names=names, line=ctx.start.line))
+
+
+def _register_method(data, class_stack, mi):
+    if class_stack:
+        class_stack[-1].methods.append(mi)
+    else:
+        data.add_function(mi)
+
+
+def _build_func_info(ctx):
+    name = _text(ctx.name())
+    line_start = ctx.start.line
+    line_end = ctx.stop.line
+    params_ctx = ctx.parameters().typedargslist() if ctx.parameters() else None
+    params = (
+        [_text(t.name()) for t in params_ctx.tfpdef()] if params_ctx else []
+    )
+    cc = _calc_cyclomatic(ctx)
+    return MethodInfo(
+        name=name,
+        line_start=line_start,
+        line_end=line_end,
+        params=[ParamInfo(name=p) for p in params],
+        cyclomatic_complexity=cc,
+        num_statements=line_end - line_start + 1,
+    )
+
+
+def _process_classdef(data, class_stack, ctx):
+    seen = {c.name: c for c in data.classes}
+    ci = _build_class_info(ctx, seen)
+    data.add_class(ci)
+    class_stack.append(ci)
+
+
+def _build_class_info(ctx, class_map):
+    name = _text(ctx.name())
+    line_start = ctx.start.line
+    line_end = ctx.stop.line
+    bases = _collect_bases(ctx)
+    decorators = _collect_decorators(ctx)
+    depth = _inheritance_depth(bases, class_map)
+    return ClassInfo(
+        name=name,
+        line_start=line_start,
+        line_end=line_end,
+        bases=bases,
+        decorators=decorators,
+        depth_inheritance=depth,
+    )
+
+
+def _collect_bases(ctx):
+    bases = []
+    if ctx.arglist():
+        for arg in ctx.arglist().argument():
+            tests = arg.test()
+            if tests:
+                first_test = tests[0] if isinstance(tests, list) else tests
+                bases.append(_text(first_test))
+    return bases
+
+
+def _collect_decorators(ctx):
+    decorators = []
+    parent = ctx.parentCtx
+    if isinstance(parent, Python3Parser.DecoratedContext):
+        for dec in parent.decorators().decorator():
+            decorators.append(_text(dec.dotted_name()))
+    return decorators
+
+
+def _extract_init_fields(ctx, ci):
+    refs = []
+    _collect_self_refs(ctx, refs)
+    for attr_name in set(refs):
+        ci.fields.add(attr_name)
+
+
+def _collect_attr_accesses(stack, ctx):
+    if not stack:
+        return
+    text = _text(ctx)
+    if ".self" in text or text.startswith("self."):
+        parts = text.split(".")
+        if len(parts) > 1 and parts[0] == "self":
+            attr = parts[1].split("(")[0].split("[")[0]
+            stack[-1].accesses_attrs.add(attr)
+
+
+def _collect_self_refs(ctx, refs):
+    text = _text(ctx)
+    if "self." in text:
+        for part in text.split("self.")[1:]:
+            attr = (
+                part.split("(")[0]
+                .split("[")[0]
+                .split(".")[0]
+                .split(")")[0]
+                .split(" ")[0]
+            )
+            if attr and attr.isidentifier():
+                refs.append(attr)
+    for child in ctx.getChildren():
+        if isinstance(child, ParserRuleContext):
+            _collect_self_refs(child, refs)
+
+
+def _inheritance_depth(bases, class_map):
+    if not bases or bases == ["object"]:
+        return 0
+    max_depth = 0
+    for b in bases:
+        if b in class_map:
+            max_depth = max(max_depth, class_map[b].depth_inheritance + 1)
+        else:
+            max_depth = max(max_depth, 1)
+    return max_depth
+
+
+def _calc_cyclomatic(ctx):
+    complexity = 1
+    complexity += _count_nodes(
+        ctx,
+        (
+            Python3Parser.If_stmtContext,
+            Python3Parser.While_stmtContext,
+            Python3Parser.For_stmtContext,
+            Python3Parser.Except_clauseContext,
+        ),
+    )
+    text = _text(ctx)
+    complexity += text.count(" and ") + text.count(" or ")
+    return complexity
+
+
+def _count_nodes(ctx, node_types):
+    count = 0
+    for t in node_types:
+        if isinstance(ctx, t):
+            count += 1
+    for child in ctx.getChildren():
+        if isinstance(child, ParserRuleContext):
+            count += _count_nodes(child, node_types)
+    return count

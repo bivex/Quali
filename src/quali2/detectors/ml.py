@@ -16,6 +16,8 @@ except ImportError:
 
 from quali2.domain.models import AnalysisData, Smell, SmellType
 
+FLOAT_NAN_PATTERN_LENGTH = 3
+
 
 class MLScanner:
     """Helper to scan ML-specific tokens and avoid Data Clumps."""
@@ -152,10 +154,15 @@ def _is_dotted_nan(scanner: MLScanner, j: int) -> bool:
 
 
 def _is_float_nan(scanner: MLScanner, j: int) -> bool:
-    if j + 3 >= scanner.n:
+    if j + FLOAT_NAN_PATTERN_LENGTH >= scanner.n:
         return False
     tks = scanner.tokens
-    if tks[j].text == "float" and tks[j+1].text == "(" and tks[j+2].text in ("'nan'", '"nan"') and tks[j+3].text == ")":
+    if (
+        tks[j].text == "float"
+        and tks[j + 1].text == "("
+        and tks[j + 2].text in ("'nan'", '"nan"')
+        and tks[j + FLOAT_NAN_PATTERN_LENGTH].text == ")"
+    ):
         return True
     return False
 

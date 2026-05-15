@@ -49,3 +49,12 @@ class AnalysisData:
     classes: list[ClassInfo] = field(default_factory=list)
     top_level_functions: list[MethodInfo] = field(default_factory=list)
     total_lines: int = 0
+
+    def add_import(self, info: ImportInfo) -> None:
+        self.imports.append(info)
+
+    def add_class(self, ci: ClassInfo) -> None:
+        self.classes.append(ci)
+
+    def add_function(self, mi: MethodInfo) -> None:
+        self.top_level_functions.append(mi)

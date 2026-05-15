@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from quali2.domain.models import AnalysisData, ClassInfo, Metric, MethodInfo
 
+LCOM_DEFAULT_SCORE = 0.0
+
 
 def compute_metrics(data: AnalysisData) -> list[Metric]:
     metrics: list[Metric] = []
@@ -58,7 +60,7 @@ def _lcom(cls: ClassInfo) -> float:
     """
     methods = [m for m in cls.methods if not m.name.startswith("__")]
     if len(methods) < 2 or not cls.fields:
-        return 0.0
+        return LCOM_DEFAULT_SCORE
 
     n = len(methods)
     p = 0  # pairs sharing no field
@@ -74,5 +76,5 @@ def _lcom(cls: ClassInfo) -> float:
 
     total = p + q
     if total == 0:
-        return 0.0
-    return max(0.0, (p - q) / total)
+        return LCOM_DEFAULT_SCORE
+    return max(LCOM_DEFAULT_SCORE, (p - q) / total)
