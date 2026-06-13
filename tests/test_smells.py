@@ -671,6 +671,14 @@ class TestLongMessageChain:
         smells = _smells_of(code, "Long Message Chain")
         assert len(smells) == 0
 
+    def test_boundary_four_dots(self):
+        # Regression: AST backend must count one dot per attribute (no off-by-one).
+        # obj.a.b.c.d has 4 dots -> flagged; obj.a.b.c has 3 -> not flagged.
+        flagged = _smells_of("def f(obj):\n    return obj.a.b.c.d\n", "Long Message Chain")
+        assert len(flagged) >= 1
+        not_flagged = _smells_of("def f(obj):\n    return obj.a.b.c\n", "Long Message Chain")
+        assert len(not_flagged) == 0
+
 
 # ===================================================================
 # 4. ML SMELLS  (6 detectors)

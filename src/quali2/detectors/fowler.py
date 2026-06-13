@@ -329,21 +329,31 @@ def _detect_refused_bequest(fp: str, tree: ast.AST) -> list[Smell]:
             # Check for raising NotImplementedError
             if len(node.body) == 1:
                 stmt = node.body[0]
-                if isinstance(stmt, ast.Raise):
-                    if isinstance(stmt.exc, ast.Call) and isinstance(
-                        stmt.exc.func, ast.Name
-                    ):
-                        if stmt.exc.func.id == "NotImplementedError":
-                            smells.append(
-                                Smell.create(
-                                    SmellType.REFUSED_BEQUEST,
-                                    fp,
-                                    node.lineno,
-                                    node.name,
-                                    "Method raises NotImplementedError — may be refusing inherited behavior",
-                                )
-                            )
+                if isinstance(stmt, ast.Raise) and _raises_not_implemented(stmt):
+                    smells.append(
+                        Smell.create(
+                            SmellType.REFUSED_BEQUEST,
+                            fp,
+                            node.lineno,
+                            node.name,
+                            "Method raises NotImplementedError — may be refusing inherited behavior",
+                        )
+                    )
     return smells
+
+
+def _raises_not_implemented(stmt: ast.Raise) -> bool:
+    """True for both `raise NotImplementedError` and `raise NotImplementedError(...)`."""
+    exc = stmt.exc
+    if exc is None:
+        return False
+    # raise NotImplementedError()  -> Call with Name func
+    if isinstance(exc, ast.Call) and isinstance(exc.func, ast.Name):
+        return exc.func.id == "NotImplementedError"
+    # raise NotImplementedError    -> bare Name
+    if isinstance(exc, ast.Name):
+        return exc.id == "NotImplementedError"
+    return False
 
 
 def _detect_comment_density(fp: str, source: str) -> list[Smell]:

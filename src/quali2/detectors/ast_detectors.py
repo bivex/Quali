@@ -206,7 +206,7 @@ def _count_attr_chain(node: ast.AST) -> int:
     while isinstance(node, ast.Attribute):
         count += 1
         node = node.value
-    return count - 1  # don't count the base name
+    return count  # one dot per Attribute node; base is a Name, already excluded
 
 
 def ast_detect_long_lambdas(fp: str, tree: ast.AST) -> list[Smell]:

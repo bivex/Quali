@@ -196,6 +196,17 @@ class Sub(Base):
         smells = _smells_of(code, "Refused Bequest")
         assert len(smells) >= 1
 
+    def test_triggered_bare_not_implemented(self):
+        # Regression: bare `raise NotImplementedError` (no call) is idiomatic
+        # and must also be detected, not just the NotImplementedError() form.
+        code = """
+class Sub(Base):
+    def ignored(self):
+        raise NotImplementedError
+"""
+        smells = _smells_of(code, "Refused Bequest")
+        assert len(smells) >= 1
+
 
 class TestCommentDensity:
     def test_triggered(self):
