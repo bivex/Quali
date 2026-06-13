@@ -8,12 +8,12 @@ Two parser backends:
 
 ## Features
 
-**40 smell detectors** across four categories:
+**41 smell detectors** across four categories:
 
 | Category | Count | Smells |
 |---|---|---|
 | Architecture | 4 | God Component, Feature Concentration, Dense Structure, Unstable Dependency |
-| Design | 18 | Multifaceted Abstraction, Feature Envy, Deficient Encapsulation, Insufficient/Broken/Hub-like Modularization, Wide/Deep/Rebellious/Broken Hierarchy, **Switch Statements, Data Clumps, Primitive Obsession, Middle Man, Speculative Generality, Divergent Change, Shotgun Surgery, Temporary Field, Refused Bequest** |
+| Design | 19 | Multifaceted Abstraction, Feature Envy, Deficient Encapsulation, Insufficient/Broken/Hub-like Modularization, Wide/Deep/Rebellious/Broken Hierarchy, **Switch Statements, Data Clumps, Primitive Obsession, Middle Man, Speculative Generality, Divergent Change, Shotgun Surgery, Temporary Field, Refused Bequest** |
 | Implementation | 12 | Complex Conditional, Complex Method, Empty Catch Clause, Long Identifier, Long Method, Long Parameter List, Long Statement, Magic Number, Missing Default, Long Lambda, Long Message Chain, **Comment Density** |
 | ML | 6 | Ambiguous Merge Key, Broken NaN Check, Chain Indexing, Forward Bypass, Type Blind Conversion, Unnecessary Iteration |
 
@@ -204,7 +204,7 @@ Pipeline:
 | | AST (default) | ANTLR4 |
 |---|---|---|
 | Dependencies | None (stdlib) | `antlr4-python3-runtime` |
-| Speed | ~0.15s (131 tests) | ~8.5s (131 tests) |
+| Speed | ~0.17s (147 tests) | ~8.5s (147 tests) |
 | Output | Identical | Identical |
 | Grammar errors | `SyntaxError` | Token-level errors |
 
@@ -254,7 +254,7 @@ source .venv/bin/activate
 PYTHONPATH=src pytest tests/ -v
 ```
 
-**131 tests**, all passing. Coverage matrix:
+**147 tests**, all passing. Coverage matrix:
 
 ### Architecture -- 13 tests
 
