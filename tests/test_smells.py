@@ -1165,6 +1165,38 @@ class TestCLIErrors:
         with pytest.raises(SystemExit):
             main(["--version"])
 
+    def test_summary_flag_omits_file_sections(self, tmp_path, capsys):
+        from quali2.cli import main
+
+        fp = tmp_path / "a.py"
+        fp.write_text("x = 1\n")
+        main([str(fp), "--summary"])
+        captured = capsys.readouterr()
+        assert "Summary" in captured.out
+        # File section header (===... with file path) should be absent
+        assert str(fp) not in captured.out
+
+    def test_output_flag_writes_file(self, tmp_path, capsys):
+        from quali2.cli import main
+
+        fp = tmp_path / "a.py"
+        fp.write_text("x = 1\n")
+        out = tmp_path / "report.json"
+        main([str(fp), "--format", "json", "--output", str(out)])
+        assert out.exists()
+        data = json.loads(out.read_text())
+        assert data["summary"]["files_analyzed"] == 1
+
+    def test_quiet_suppresses_output_notice(self, tmp_path, capsys):
+        from quali2.cli import main
+
+        fp = tmp_path / "a.py"
+        fp.write_text("x = 1\n")
+        out = tmp_path / "report.txt"
+        main([str(fp), "--output", str(out), "--quiet"])
+        captured = capsys.readouterr()
+        assert captured.err == ""
+
 
 # ===================================================================
 # 11. REPORTING CONTENT VERIFICATION

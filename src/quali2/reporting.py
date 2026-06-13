@@ -68,10 +68,11 @@ def _format_summary(report: ProjectReport) -> list[str]:
     return lines
 
 
-def format_text(report: ProjectReport) -> str:
+def format_text(report: ProjectReport, summary_only: bool = False) -> str:
     lines: list[str] = []
-    for fr in report.files:
-        lines.extend(_format_file_section(fr))
+    if not summary_only:
+        for fr in report.files:
+            lines.extend(_format_file_section(fr))
     lines.extend(_format_summary(report))
     return "\n".join(lines)
 

@@ -30,6 +30,24 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Parser backend: 'ast' (stdlib, default) or 'antlr' (requires antlr4-python3-runtime)",
     )
     parser.add_argument(
+        "--summary",
+        "-s",
+        action="store_true",
+        help="Show summary only (text format): skip per-file smell/metric listings",
+    )
+    parser.add_argument(
+        "--output",
+        "-o",
+        metavar="FILE",
+        help="Write report to FILE instead of stdout",
+    )
+    parser.add_argument(
+        "--quiet",
+        "-q",
+        action="store_true",
+        help="Suppress progress/status messages on stderr",
+    )
+    parser.add_argument(
         "--version",
         "-V",
         action="version",
@@ -51,8 +69,22 @@ def main(argv: list[str] | None = None) -> None:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(1)
 
-    output = format_json(report) if args.format == "json" else format_text(report)
-    print(output)
+    if args.format == "json":
+        output = format_json(report)
+    else:
+        output = format_text(report, summary_only=args.summary)
+
+    if args.output:
+        try:
+            with open(args.output, "w", encoding="utf-8") as f:
+                f.write(output)
+        except OSError as exc:
+            print(f"Error: cannot write to '{args.output}': {exc}", file=sys.stderr)
+            sys.exit(1)
+        if not args.quiet:
+            print(f"Report written to {args.output}", file=sys.stderr)
+    else:
+        print(output)
 
 
 if __name__ == "__main__":
