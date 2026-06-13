@@ -204,7 +204,7 @@ Pipeline:
 | | AST (default) | ANTLR4 |
 |---|---|---|
 | Dependencies | None (stdlib) | `antlr4-python3-runtime` |
-| Speed | ~0.17s (147 tests) | ~8.5s (147 tests) |
+| Speed | ~0.2s (150 tests) | ~8.5s (150 tests) |
 | Output | Identical | Identical |
 | Grammar errors | `SyntaxError` | Token-level errors |
 
@@ -254,20 +254,27 @@ source .venv/bin/activate
 PYTHONPATH=src pytest tests/ -v
 ```
 
-**147 tests**, all passing. Coverage matrix:
+**150 tests**, all passing, organized into three files:
 
-### Architecture -- 13 tests
+| File | Tests | Scope |
+|---|---|---|
+| `tests/test_smells.py` | 125 | Core detectors (architecture, design, implementation, ML), OO metrics, CLI, reporting, visitor, file discovery |
+| `tests/test_fowler.py` | 16 | Fowler refactoring smells (Switch Statements, Data Clumps, Primitive Obsession, Middle Man, Speculative Generality, Divergent Change, Shotgun Surgery, Temporary Field, Refused Bequest, Comment Density, Feature Envy, Message Chains) |
+| `tests/test_quali2.py` | 9 | Original smoke tests (parse, analyze, text/JSON output) |
+
+Coverage matrix (`tests/test_smells.py`):
+
+### Architecture
 
 | Detector | Test Class | +Case | -Case |
 |---|---|---|---|
-| God Component (LOC) | `TestGodComponent` | ✓ | ✓ |
-| God Component (classes) | `TestGodComponent` / `TestGodComponentNegative` | ✓ | ✓ |
+| God Component (LOC + classes) | `TestGodComponent` / `TestGodComponentNegative` | ✓ | ✓ |
 | Feature Concentration | `TestFeatureConcentration` | ✓ | ✓ |
 | Dense Structure | `TestDenseStructure` | ✓ | ✓ |
-| Unstable Dependency (cross-file) | `TestUnstableDependency` | ✓ | ✓, ✓ |
+| Unstable Dependency (cross-file) | `TestUnstableDependency` | ✓ | ✓ |
 | Broken Modularization (cross-file) | `TestBrokenModularization` | ✓ | ✓ |
 
-### Design -- 16 tests
+### Design
 
 | Detector | Test Class | +Case | -Case |
 |---|---|---|---|
@@ -281,34 +288,34 @@ PYTHONPATH=src pytest tests/ -v
 | Rebellious Hierarchy | `TestRebelliousHierarchy` / `TestRebelliousHierarchyNegative` | ✓ | ✓ |
 | Broken Hierarchy | `TestBrokenHierarchy` | ✓ | ✓ |
 
-### Implementation -- 41 tests
+### Implementation
 
 | Detector | Test Class | +Case | -Case |
 |---|---|---|---|
 | Complex Conditional | `TestComplexConditional` | ✓ | ✓ |
 | Complex Method | `TestComplexMethod` / `TestComplexMethodNegative` | ✓ | ✓ |
-| Empty Catch Clause | `TestEmptyCatchClause` | ✓, ✓ | ✓ |
+| Empty Catch Clause | `TestEmptyCatchClause` | ✓ | ✓ |
 | Long Identifier | `TestLongIdentifier` | ✓ | ✓ |
 | Long Method | `TestLongMethod` | ✓ | ✓ |
 | Long Parameter List | `TestLongParameterList` | ✓ | ✓ |
 | Long Statement | `TestLongStatement` | ✓ | ✓ |
-| Magic Number | `TestMagicNumber` / `TestMagicNumberEdgeCases` | 12 | 8 |
+| Magic Number | `TestMagicNumber` / `TestMagicNumberEdgeCases` | ✓ | ✓ |
 | Missing Default | `TestMissingDefault` | ✓ | ✓ |
 | Long Lambda Function | `TestLongLambdaFunction` | ✓ | ✓ |
 | Long Message Chain | `TestLongMessageChain` | ✓ | ✓ |
 
-### ML -- 11 tests
+### ML
 
 | Detector | Test Class | +Case | -Case |
 |---|---|---|---|
 | Ambiguous Merge Key | `TestAmbiguousMergeKey` | ✓ | ✓ |
-| Broken NaN Check | `TestBrokenNaNCheck` | ✓, ✓ | ✓ |
+| Broken NaN Check | `TestBrokenNaNCheck` | ✓ | ✓ |
 | Chain Indexing | `TestChainIndexing` | ✓ | ✓ |
 | Forward Bypass | `TestForwardBypass` | ✓ | ✓ |
 | Type Blind Conversion | `TestTypeBlindConversion` | ✓ | ✓ |
-| Unnecessary Iteration | `TestUnnecessaryIteration` | ✓, ✓ | ✓ |
+| Unnecessary Iteration | `TestUnnecessaryIteration` | ✓ | ✓ |
 
-### Metrics, CLI, Infrastructure -- 44 tests
+### Metrics, CLI, Infrastructure
 
 | Area | Test Class | Tests |
 |---|---|---|
@@ -316,12 +323,11 @@ PYTHONPATH=src pytest tests/ -v
 | Clean code -> no false positives | `TestCleanCode` | 3 |
 | Smell metadata (category/severity) | `TestSmellMetadata` | 8 |
 | Report aggregation | `TestReportAggregation` | 3 |
-| CLI errors, json, version | `TestCLIErrors` | 3 |
+| CLI errors, json, version, summary, output, quiet | `TestCLIErrors` | 6 |
 | JSON content verification | `TestReportingContent` | 2 |
 | Visitor: from-import, nested class, defaults, async | `TestVisitorEdgeCases` | 5 |
 | File discovery: .pyc, nested dirs, __pycache__ | `TestFileDiscovery` | 3 |
 | Parse error resilience | `TestParseErrorResilience` | 1 |
-| Original smoke tests | `test_quali2.py` | 9 |
 
 ## Dependencies
 
